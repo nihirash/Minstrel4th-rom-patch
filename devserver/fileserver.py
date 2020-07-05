@@ -63,9 +63,17 @@ def recv_plain_file(filename):
 def merge_name(name):
     return os.path.join(fspath, name)
 
+def file_info(filename):
+    file = merge_name(filename)
+    if os.path.isfile(file):
+        return " " + str(os.path.getsize(file))
+    elif os.path.isdir(file):
+        return " <DIR>"
+
 def get_catalog():
-    flist = [p for p in os.listdir(fspath) if os.path.isfile(merge_name(p))]
-    files = '\r'.join(flist)
+    flist = [p for p in os.listdir(fspath)]
+    
+    files = '\r'.join(map(lambda x: x + file_info(x) ,flist))
     log("Sending catalog")
     for b in bytes(files, 'ascii', 'ignore'):
         send_byte(b.to_bytes(1, 'little'))
