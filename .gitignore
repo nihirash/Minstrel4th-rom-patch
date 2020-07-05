@@ -4,3 +4,4 @@ xmodem.bin
 *.bin
 *.sym
 *.~
+*.asm~
