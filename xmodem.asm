@@ -14,7 +14,7 @@ XMODEM_BS:	equ 0x80
 
 	;; Miscellaneous params
 CR:		equ 0x0d
-	
+	OUTPUT "xmodem.bin"
 	org 0xf800		      ; Start at 63,488 (dec)
 	
 	;; (Non-blocking) receive byte from serial port
@@ -272,3 +272,4 @@ SECTMSG:
 	db "SENDING SECTOR ", 0x00
 	
 END:	
+	OUTEND

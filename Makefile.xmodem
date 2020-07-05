@@ -1,5 +1,11 @@
-ASM = z80asm
-AFLAGS = -L
+ASM = sjasmplus
+AFLAGS = --sym=xmodem.sym
+
+ifeq ($(OS),Windows_NT)
+	ERASE = erase
+	else
+	ERASE = rm
+endif
 
 SRC = xmodem.asm
 HEADERS = 
@@ -9,7 +15,7 @@ OBJS = $(SRC:.asm=.bin)
 all: $(OBJS)
 
 %.bin:	%.asm Makefile.xmodem $(HEADERS)
-	$(ASM) $(AFLAGS) -o $@ $<
+	$(ASM) $(AFLAGS)
 
 clean:
-	erase *.bin
+	$(ERASE) $(OBJS)

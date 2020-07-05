@@ -1,3 +1,18 @@
+ASM = sjasmplus
+AFLAGS = --sym=rom.sym
+
+ifeq ($(OS),Windows_NT)
+	ERASE = erase
+	MERGECMD = copy patched.rom+secondpart.rom toflash.tom
+	else
+	ERASE = rm
+	MERGECMD = cat patched.rom secondpart.rom >toflash.rom
+endif
+
+
+SRC = patch.asm
+OBJS = patched.rom
+
 all: toflash.rom
 
 flash: toflash.rom
@@ -5,10 +20,10 @@ flash: toflash.rom
 		minipro -p "AT28C256"  -w toflash.rom
 
 toflash.rom: patched.rom
-		cat patched.rom secondpart.rom >toflash.rom
+		$(MERGECMD)
 
-patched.rom: patch.asm minstrel.rom
-		sjasmplus patch.asm
+$(OBJS): $(SRC) minstrel.rom
+		$(ASM) $(AFLAGS) patch.asm
 		
 clean:
-		rm patched.rom toflash.rom
+		$(ERASE) $(OBJS) toflash.rom

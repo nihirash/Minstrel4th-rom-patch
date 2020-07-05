@@ -39,6 +39,16 @@ uwrite:
     ret
 
 
+
+; Here goes word definitions. Format dead easy
+; (FOR ROM word! Tape word have a bit different format!):
+;
+; * n-bytes word name with last char ored to #80
+; * word - link to prev. work
+; * byte - name size
+; * word - link to code section, usual $ + 2
+
+
 ubget:
 .name db "UBGE", 'T' + #80
 .name_end
@@ -89,9 +99,7 @@ ubget:
     ei 
     rst #10 : db #0a
     jp (iy)
-;
-; Here goes word definitions. Format dead easy:
-; n-bytes word name with last char ored to #80
+
 
 uwrite_w:
 .name db "UWRIT", 'E' + #80
