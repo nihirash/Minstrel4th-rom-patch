@@ -1,6 +1,6 @@
 ;
 ; This is skeleton for Minstrel 4th ROM patch
-
+LINK = #1D58
 ;;;;;;;;;;;;;;;;;;;;;;; Global macros section
     include "rom-modules/forth-word-macro.asm"
 
@@ -17,8 +17,6 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;; Dictionary hack place
     org #1ffd
-    LUA PASS3
-        _pc("dw " .. link)
-    ENDLUA
+    dw LINK
 ;;;;;;;;;;;;;;;;;;;;;;; Export binary file
     savebin "patched.rom", 0, 16384
