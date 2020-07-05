@@ -2,7 +2,7 @@ BINARY_GET_COMMAND = 'p'
 BINARY_PUT_COMMAND = 'P'
 GET_CATALOG_COMMAND = 'C'
 
-; Routine that sends file name by uart finished with #ff
+; Routine that sends file name by uart as ASCIIZ string
 sendFileName:
     call #05df
     jr c, .error
@@ -29,6 +29,8 @@ sendFileName:
     scf
     ret
 
+
+;;;;;;;;;;;;;;;;;;;;;;; Words section
 w_ubput:
     FORTH_WORD "UBPUT"
     di

@@ -29,6 +29,8 @@ uwrite:
     ld c, DATA_REG, a, e : out (c), a
     ret
 
+;;;;;;;;;;;;;;;;;;;;;;; Words section
+
 w_uwrite:
     FORTH_WORD "UWRITE"
     rst #18
