@@ -1,0 +1,15 @@
+ASM = z80asm
+AFLAGS = -L
+
+SRC = xmodem.asm
+HEADERS = 
+
+OBJS = $(SRC:.asm=.bin)
+
+all: $(OBJS)
+
+%.bin:	%.asm Makefile.xmodem $(HEADERS)
+	$(ASM) $(AFLAGS) -o $@ $<
+
+clean:
+	erase *.bin
