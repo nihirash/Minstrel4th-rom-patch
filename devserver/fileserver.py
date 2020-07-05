@@ -2,10 +2,12 @@
 
 import serial
 import os
+import pathlib
 import datetime
 
 ############### CHANGE HERE TO YOUR UART DEV
 port = "/dev/tty.usbserial-0001"
+fspath = os.path.abspath("filesystem")
 
 uart = serial.Serial(port=port, baudrate=115200, rtscts=True, exclusive=True)
 
@@ -52,7 +54,6 @@ def send_plain_file(filename: str):
 def recv_plain_file(filename):
     log('Will create file ' + filename)
     size = int.from_bytes(uart.read(2), "little")
-    # log('File size: ' + size)
     try:
         with open(filename, "wb") as file:
             file.write(uart.read(size))
@@ -60,9 +61,13 @@ def recv_plain_file(filename):
     except:
         log("File storing issue")
 
+def get_catalog():
+    flist = [p for p in pathlib.Path(fspath).iterdir() if p.is_file()]
+    
+
 def extract_file_name():
-    name = uart.read_until(b'?').decode('utf-8').replace('\0', '')[:-1]
-    return os.path.abspath(os.path.join("filesystem", name))
+    name = uart.read_until(b'\0').decode('ascii', errors = 'ignore').replace('\0', '')
+    return os.path.join(fspath, name)
 
 log("Started")
 
@@ -70,8 +75,7 @@ while True:
     cmd = uart.read(1)
     if cmd == b'C':
         log('Get catalog required')
-        
-    if cmd == b'p':
+    elif cmd == b'p':
         log('Send plain file commad received')
         send_plain_file(extract_file_name())
         continue

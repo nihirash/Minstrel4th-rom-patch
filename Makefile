@@ -10,7 +10,7 @@ ifeq ($(OS),Windows_NT)
 endif
 
 
-SRC = patch.asm
+SRC = patch.asm rom-modules/*.asm
 OBJS = patched.rom
 
 all: toflash.rom
