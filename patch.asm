@@ -4,6 +4,10 @@ RTS_LOW = #16
 RTS_HIGH = #56
 LAST_WORD = #1D58
 
+BINARY_GET_COMMAND = 'p'
+BINARY_PUT_COMMAND = 'P'
+GET_CATALOG_COMMAND = 'C'
+
     device zxspectrum48 // Only for using SAVEBIN
     org #0
     incbin "minstrel.rom"
@@ -48,17 +52,7 @@ uwrite:
 ; * byte - name size
 ; * word - link to code section, usual $ + 2
 
-
-ubget:
-.name db "UBGE", 'T' + #80
-.name_end
-    dw LAST_WORD
-.link
-    db .name_end - .name
-    dw $ + 2
-    di
-    call uart_init
-    ld e, 'p' : call uwrite
+sendFileName:
     call #05df
     jr c, .error
     push de
@@ -78,6 +72,60 @@ ubget:
     call #07da
 .performReceive
     ld e, '?' : call uwrite
+    or a
+    ret
+.error 
+    scf
+    ret
+
+ubput:
+.name db "UBPU", 'T' + #80
+.name_end
+    dw LAST_WORD
+.link 
+    db .name_end - .name
+    dw $ + 2
+    di
+    call uart_init
+
+    ld e, BINARY_PUT_COMMAND : call uwrite
+    call sendFileName : jr c, .error
+    
+    rst #18 ; File size
+    push de
+    call uwrite : ld e, d : call uwrite
+
+    rst #18
+    ex hl, de
+    pop bc
+.sendLoop
+    push bc
+    ld a, (hl), e, a : call uwrite
+    inc hl
+    pop bc
+    dec bc
+    ld a, b : or c
+    jr nz, .sendLoop
+
+.exit
+    ei
+    jp (iy)
+.error
+    ei
+    rst #20 : db #0a
+    jp (iy)
+
+ubget:
+.name db "UBGE", 'T' + #80
+.name_end
+    dw ubput.link
+.link
+    db .name_end - .name
+    dw $ + 2
+    di
+    call uart_init
+    ld e, BINARY_GET_COMMAND : call uwrite
+    call sendFileName : jr c, .error
     call ureadb : ld l, a
     call ureadb : ld h, a
     or l : jr z, .error
@@ -97,7 +145,7 @@ ubget:
     jp (iy)
 .error
     ei 
-    rst #10 : db #0a
+    rst #20 : db #0a
     jp (iy)
 
 

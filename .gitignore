@@ -1,5 +1,6 @@
 patched.rom
 toflash.rom
 xmodem.bin
+*.bin
 *.sym
 *.~
