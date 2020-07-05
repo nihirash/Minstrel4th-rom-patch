@@ -15,7 +15,7 @@ XMODEM_BS:	equ 0x80
 	;; Miscellaneous params
 CR:		equ 0x0d
 	
-	org 0xf800		      ; Start at 63,488 (dec)
+	org 0xf000	      ; Start at 61,440 ( 0xf800 = 63,488d)
 	
 	;; (Non-blocking) receive byte from serial port
 	;; 
@@ -239,34 +239,114 @@ PRINT_MSG:
 	rst 0x08
 	pop hl
 	jr PRINT_MSG
+
+	;; Send a block of memory via serial interface, using XMODEM
+	;; protocol
+	;;
+	;; On entry:
+	;;   2OS - Address of start of block
+	;;   TOS - Length of block
+	;; On exit:
+	;;   TOS - error code (0000 indicates success)
+TRANSMIT:	
+	rst 0x18		; Retrieve TOS into DE
+
+	;; Work out number of packets to send. Instead of dividing
+	;; by 128, we multiple by 2 and ignore lowest byte.
+
+	xor a			; Multiple DE by 2, leaving
+	sla e			; result in ADE
+	rl d
+	rla
+
+	;; Transfer number of packets to BC
+	ld b,a
+	ld c,d
+
+	;; Check for remainder
+	ld a,e
+	srl a			; Divide by 2
+	and a
+	jr z, TRANS_CONT_1
+	inc bc			; One extra packet for remainder
+
+TRANS_CONT_1:
+	ld (LAST_PACKET),a	; Store for later
+
+	;; Initialise packet number
+	ld hl, 0x0000		; XMODEM starts packet count at 1
+	                        ; though value increased at beginning
+	                        ; of each send opp
+	ld (CURR_PACKET),hl	; Store for later
 	
-TEST:	
-	ld a,1			; Block number
-	ld hl,0x0000		; Start of block to send
-TEST_LOOP:	
+	;;  Retrieve start of block into HL
+	rst 0x18
+	ld h,d
+	ld l,e
+
+	;; Make transmission
+	ld d,b			; Move no. blocks to DE
+	ld e,c
+	
+	;; At this point:
+	;;     HL = start
+	;;     DE = no packets
+	;;     CURR_PACKET = packet number
+
+	ld a,h
+	call PRINT_HEX
+	ld a,l
+	call PRINT_HEX
+	ld a,0x20
+	rst 0x08
+	ld a,d
+	call PRINT_HEX
+	ld a,e
+	call PRINT_HEX
+	ld a,0x0d
+	rst 0x08
+
+	jp (iy)
+
+
+TRANS_LOOP:
+	;; Increase current packet
+	ld bc,(CURR_PACKET)
+	inc bc
+	ld (CURR_PACKET),bc
+	
 	ld b,5			; Number of retries
-TEST_LOOP_2:
+TRANS_LOOP_2:
+	push de
 	push hl
-	push af
 	push bc
+	ld a,(CURR_PACKET)	; Low byte of CURR_PACKET value
 	call SEND_BLOCK
 	pop bc
-	jr nc, TEST_CONT_1
-	pop af
+	jr nc, TRANS_CONT_2
 	pop hl		
-	djnz TEST_LOOP_2
-TEST_CONT_1:
-	pop af
+	pop de
+	djnz TRANS_LOOP_2
+TRANS_CONT_2:
 	pop de 			; Effectively discard old value of HL
-	inc a
-	cp 0x40
-	jr nz, TEST_LOOP
+	pop de			; Retrieve no. block left to transmit
+
+	dec de			; Decrease no. packets to send
+	ld a,d			; Check if we are done
+	or e
+	
+	jr nz, TRANS_LOOP
 	
 	ld a, XMODEM_EOT
 	call SEND
 
 	jp (iy) 		; Return to FORTH
 
+LAST_PACKET:
+	db 0x00			; Temporary store for length of last
+				; packet
+CURR_PACKET:
+	dw 0x0000		; Temporary story for packet number
 	
 SECTMSG:
 	db "SENDING SECTOR ", 0x00
