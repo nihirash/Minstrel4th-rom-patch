@@ -1,10 +1,14 @@
+;;;;;;;;;;;;;;;;;;;;;;; Constants section
 BINARY_GET_COMMAND = 'p'
 BINARY_PUT_COMMAND = 'P'
 GET_CATALOG_COMMAND = 'C'
 
+;;;;;;;;;;;;;;;;;;;;;;; Assembly routines
+
 ; Routine that sends file name by uart as ASCIIZ string
+; Filename goes after(SIC!) your word. Like usual load/bload
 sendFileName:
-    call #05df
+    call #05df ; Find next word ROM routine
     jr c, .error
     push de
     push bc
@@ -20,7 +24,7 @@ sendFileName:
     ld a, b : or c : jr nz, .sendNameLoop
     pop bc
     pop de
-    call #07da
+    call #07da ; Clean word ROM routine
 .performReceive
     ld e, 0 : call uwrite
     or a
@@ -31,6 +35,22 @@ sendFileName:
 
 
 ;;;;;;;;;;;;;;;;;;;;;;; Words section
+w_ls:
+    FORTH_WORD "LS"
+    di
+    call uart_init
+    ld e, GET_CATALOG_COMMAND : call uwrite
+    ld a, 13 : rst #08
+.loop
+    call ureadb
+    cp #ff : jr z, .exit
+    rst #08
+    jp .loop
+.exit
+    ld a, 13 : rst #08
+    ei 
+    jp (iy)
+
 w_ubput:
     FORTH_WORD "UBPUT"
     di

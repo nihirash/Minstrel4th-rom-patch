@@ -2,7 +2,6 @@
 
 import serial
 import os
-import pathlib
 import datetime
 
 ############### CHANGE HERE TO YOUR UART DEV
@@ -61,20 +60,36 @@ def recv_plain_file(filename):
     except:
         log("File storing issue")
 
+def merge_name(name):
+    return os.path.join(fspath, name)
+
+def file_info(filename):
+    file = merge_name(filename)
+    if os.path.isfile(file):
+        return " " + str(os.path.getsize(file))
+    elif os.path.isdir(file):
+        return " <DIR>"
+
 def get_catalog():
-    flist = [p for p in pathlib.Path(fspath).iterdir() if p.is_file()]
+    flist = [p for p in os.listdir(fspath)]
     
+    files = '\r'.join(map(lambda x: x + file_info(x) ,flist))
+    log("Sending catalog")
+    for b in bytes(files, 'ascii', 'ignore'):
+        send_byte(b.to_bytes(1, 'little'))
+    send_byte((255).to_bytes(1, 'little'))
+    log("Finished")
 
 def extract_file_name():
     name = uart.read_until(b'\0').decode('ascii', errors = 'ignore').replace('\0', '')
-    return os.path.join(fspath, name)
+    return merge_name(name)
 
 log("Started")
-
 while True:
     cmd = uart.read(1)
     if cmd == b'C':
         log('Get catalog required')
+        get_catalog()
     elif cmd == b'p':
         log('Send plain file commad received')
         send_plain_file(extract_file_name())
@@ -85,5 +100,5 @@ while True:
         continue
 
 
-uart.close()
+
 log("Uart closed")
