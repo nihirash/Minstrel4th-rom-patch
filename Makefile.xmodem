@@ -15,7 +15,7 @@ OBJS = $(SRC:.asm=.bin)
 all: $(OBJS)
 
 %.bin:	%.asm Makefile.xmodem $(HEADERS)
-	$(ASM) $(AFLAGS)
+	$(ASM) $(AFLAGS) $<
 
 clean:
 	$(ERASE) $(OBJS)
