@@ -41,12 +41,10 @@ RECV:	ld a, RTS_LOW		; Set RTS low
 READ_BYTE:
 	in a, (DATA_PORT)	; Read byte
 	
-	ex af,af'		; Save character
+	push af			; Save character
 	ld a, RTS_HIGH		; Set RTS high
 	out (CTRL_PORT),a	; Hold receiver
-	pop af
-
-	ex af,af'		; Restore character
+	pop af			; Restore character
 	
 	and a 			; Reset carry, to indicate success
 	ret
