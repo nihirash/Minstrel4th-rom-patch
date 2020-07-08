@@ -250,6 +250,10 @@ PRINT_MSG:
 	;; On exit:
 	;;   TOS - error code (0000 indicates success)
 TRANSMIT:	
+	xor a
+	call PRINT_HEX
+	jp (iy)
+
 	rst 0x18		; Retrieve TOS into DE
 
 	;; Work out number of packets to send. Instead of dividing
@@ -272,6 +276,7 @@ TRANSMIT:
 	inc bc			; One extra packet for remainder
 
 TRANS_CONT_1:
+	
 	ld (LAST_PACKET),a	; Store for later
 
 	;; Initialise packet number
@@ -306,8 +311,6 @@ TRANS_CONT_1:
 	call PRINT_HEX
 	ld a,0x0d
 	rst 0x08
-
-	jp (iy)
 
 
 TRANS_LOOP:
