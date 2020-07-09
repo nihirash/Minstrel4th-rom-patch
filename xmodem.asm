@@ -293,21 +293,6 @@ TRANS_CONT_1:
 	;;     DE = no packets
 	;;     CURR_PACKET = packet number
 
-	;; Check
-	ld a,h
-	call PRINT_HEX
-	ld a,l
-	call PRINT_HEX
-	ld a, 0x20
-	rst 0x08
-	
-	ld a,d
-	call PRINT_HEX
-	ld a,e
-	call PRINT_HEX
-	ld a, CR
-	rst 0x08
-
 TRANS_LOOP:
 	;; Increase current packet
 	ld bc,(CURR_PACKET)
