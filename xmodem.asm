@@ -204,7 +204,7 @@ TX_NO_SEND:
 	;; On entry:
 	;; 	A contains value to be printed
 	;; On exit:
-	;; 	
+	;; 	A and alternate registers corrupted
 PRINT_HEX:	
 	push af			; Save number for later
 	srl a			; Shift high nibble into low nibble
@@ -248,10 +248,6 @@ PRINT_MSG:
 	;; On exit:
 	;;   TOS - error code (0000 indicates success)
 TRANSMIT:	
-	xor a
-	call PRINT_HEX
-	jp (iy)
-
 	rst 0x18		; Retrieve TOS into DE
 
 	;; Work out number of packets to send. Instead of dividing
@@ -297,19 +293,20 @@ TRANS_CONT_1:
 	;;     DE = no packets
 	;;     CURR_PACKET = packet number
 
+	;; Check
 	ld a,h
 	call PRINT_HEX
 	ld a,l
 	call PRINT_HEX
-	ld a,0x20
+	ld a, 0x20
 	rst 0x08
+	
 	ld a,d
 	call PRINT_HEX
 	ld a,e
 	call PRINT_HEX
-	ld a,0x0d
+	ld a, CR
 	rst 0x08
-
 
 TRANS_LOOP:
 	;; Increase current packet
