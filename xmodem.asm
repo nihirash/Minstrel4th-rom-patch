@@ -12,6 +12,9 @@ XMODEM_ACK:	equ 0x06
 XMODEM_NAK:	equ 0x15
 XMODEM_BS:	equ 0x80
 
+	;; Minstrel System Variables
+FLAGS:	equ 0x3c3e
+
 	;; Miscellaneous params
 CR:		equ 0x0d
 	
@@ -103,11 +106,27 @@ SEND_BLOCK:
 	pop af			; Retrieve block number
 	pop hl			; Restore block address
 	push af			; Store block number
+
+	;; Check in VIS mode
+	ld a,(FLAGS)
+	bit 4,a			; VIS = 0 ; INVIS = 1
+	jr nz, SB_CONT_2
+
+	pop af
+	push af
 	call PRINT_HEX		; Print it
+
+	;; Check in VIS mode
+SB_CONT_2:
+	ld a,(FLAGS)
+	bit 4,a			; VIS = 0 ; INVIS = 1
+	jr nz, SB_CONT_3
+	
 	ld a, CR		; Followed by carriage return
 	rst 0x08
 	
 	;; Send header
+SB_CONT_3:
 	ld a, XMODEM_SOH
 	call SEND
 	
@@ -206,7 +225,7 @@ TX_NO_SEND:
 	;; On exit:
 	;; 	A and alternate registers corrupted
 PRINT_HEX:	
-	push af			; Save number for later
+	push af
 	srl a			; Shift high nibble into low nibble
 	srl a
 	srl a
@@ -230,6 +249,12 @@ PRINT_CNT:
 	;; 	A, HL, and alternative registers are corrupt
 	;; 
 PRINT_MSG:
+	;; Check in VIS mode
+	ld a,(FLAGS)
+	bit 4,a			; VIS = 0 ; INVIS = 1
+	ret nz
+
+	;; Print Message
 	ld a, (hl)
 	and a			; Null byte indicates end of message
 	ret z
@@ -311,6 +336,18 @@ TRANS_LOOP_2:
 	pop hl		
 	pop de
 	djnz TRANS_LOOP_2
+
+	;; Abandon transfer and report error
+	ld hl, ERRMSG
+	call PRINT_MSG
+	ld a, CR
+	rst 0x08
+
+	ld de, 0xFFFF		; Indicate error
+	rst 0x10		; Push onto FORTH stack
+
+	jp (iy)			; Return to FORTH
+	
 TRANS_CONT_2:
 	pop de 			; Effectively discard old value of HL
 	pop de			; Retrieve no. block left to transmit
@@ -324,6 +361,15 @@ TRANS_CONT_2:
 	ld a, XMODEM_EOT
 	call SEND
 
+	;; Confirm success
+	ld hl, OKAYMSG
+	call PRINT_MSG
+	ld a, CR
+	rst 0x08
+
+	ld de,0x0000		; Indicates success
+	rst 0x10		; Push onto stack
+
 	jp (iy) 		; Return to FORTH
 
 LAST_PACKET:
@@ -334,6 +380,10 @@ CURR_PACKET:
 	
 SECTMSG:
 	db "SENDING SECTOR ", 0x00
+ERRMSG:	
+	db "SEND FAILED ", 0x00
+OKAYMSG:
+	db "SEND COMPLETE ", 0x00
 	
 END:	
 	OUTEND
