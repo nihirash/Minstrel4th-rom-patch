@@ -97,41 +97,15 @@ SEND_BYTE:
 	;;   Carry Flag clear - Send completed and acknowledged
 SEND_BLOCK:
 	;; Send header information
-	push hl			; Save start address
-	push af			; Save Sector number
-
-	;; Report send
-	ld hl, SECTMSG
-	call PRINT_MSG
-	pop af			; Retrieve block number
-	pop hl			; Restore block address
 	push af			; Store block number
 
-	;; Check in VIS mode
-	ld a,(FLAGS)
-	bit 4,a			; VIS = 0 ; INVIS = 1
-	jr nz, SB_CONT_2
-
-	pop af
-	push af
-	call PRINT_HEX		; Print it
-
-	;; Check in VIS mode
-SB_CONT_2:
-	ld a,(FLAGS)
-	bit 4,a			; VIS = 0 ; INVIS = 1
-	jr nz, SB_CONT_3
-	
-	ld a, CR		; Followed by carriage return
-	rst 0x08
-	
 	;; Send header
 SB_CONT_3:
 	ld a, XMODEM_SOH
 	call SEND
 	
-	pop af			; Restore Sector number
-	push af			; Save Sector number
+	pop af			; Restore Block number
+	push af			; Save Block number
 	call SEND
 	
 	pop af			; Restore Sector number
@@ -249,11 +223,6 @@ PRINT_CNT:
 	;; 	A, HL, and alternative registers are corrupt
 	;; 
 PRINT_MSG:
-	;; Check in VIS mode
-	ld a,(FLAGS)
-	bit 4,a			; VIS = 0 ; INVIS = 1
-	ret nz
-
 	;; Print Message
 	ld a, (hl)
 	and a			; Null byte indicates end of message
@@ -273,6 +242,13 @@ PRINT_MSG:
 	;; On exit:
 	;;   TOS - error code (0000 indicates success)
 TRANSMIT:	
+	ld a,(FLAGS)		; If VIS, move print posn to new line
+	bit 4,a
+	jr nz, TRANS_CONT_0
+	ld a, CR
+	rst 0x08
+
+TRANS_CONT_0:	
 	rst 0x18		; Retrieve TOS into DE
 
 	;; Work out number of packets to send. Instead of dividing
@@ -329,26 +305,48 @@ TRANS_LOOP_2:
 	push de
 	push hl
 	push bc
+
+	;; Print block-sending information
+	ld a,(FLAGS)		; Check if VIS enabled
+	bit 4,a
+	jr nz, TRANS_CONT_2
+
+	;; Report send
+	push hl
+	ld hl, SECTMSG
+	call PRINT_MSG
+	ld a, (CURR_PACKET)
+	call PRINT_HEX
+	ld a, CR
+	rst 0x08
+	pop hl
+	
+TRANS_CONT_2:	
 	ld a,(CURR_PACKET)	; Low byte of CURR_PACKET value
 	call SEND_BLOCK
 	pop bc
-	jr nc, TRANS_CONT_2
-	pop hl		
+	jr nc, TRANS_CONT_4	; Succeeded, so move on
+	pop hl			; Otherwise, retry send
 	pop de
-	djnz TRANS_LOOP_2
+	djnz TRANS_LOOP_2	; If not at maximum retries
 
 	;; Abandon transfer and report error
+	ld a,(FLAGS)
+	bit 4,a
+	jr nz, TRANS_CONT_3
+
 	ld hl, ERRMSG
 	call PRINT_MSG
 	ld a, CR
 	rst 0x08
 
+TRANS_CONT_3:
 	ld de, 0xFFFF		; Indicate error
 	rst 0x10		; Push onto FORTH stack
 
 	jp (iy)			; Return to FORTH
 	
-TRANS_CONT_2:
+TRANS_CONT_4:
 	pop de 			; Effectively discard old value of HL
 	pop de			; Retrieve no. block left to transmit
 
@@ -356,17 +354,22 @@ TRANS_CONT_2:
 	ld a,d			; Check if we are done
 	or e
 	
-	jr nz, TRANS_LOOP
+	jr nz, TRANS_LOOP	; Look back for next packet
 	
-	ld a, XMODEM_EOT
+	ld a, XMODEM_EOT	; Indicate end of transfer
 	call SEND
 
 	;; Confirm success
+	ld a,(FLAGS)
+	bit 4,a
+	jr nz, TRANS_CONT_5
+
 	ld hl, OKAYMSG
 	call PRINT_MSG
 	ld a, CR
 	rst 0x08
 
+TRANS_CONT_5:	
 	ld de,0x0000		; Indicates success
 	rst 0x10		; Push onto stack
 
