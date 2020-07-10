@@ -33,12 +33,16 @@ Current version is intended to be loaded into memory at address 0xF000, using co
 
 `F000 0 BLOAD xmodem ( LOAD M/CODE )`
 
+Only transmit operation is currently implement (no receive operation). To use, type a sequence something like:
+
 `57 80 OUT 16 80 OUT ( INITIALISE SERIAL CARD ( HEX VALUES ) )`
 
-`<start> <length> F0BB CALL ( TRANSMIT )`
+`<start> <length> F0D1 CALL ( TRANSMIT )`
+
+On exit, stack contains value to indicate outcome: '0' for success; '-1' for failure (timeout). Routine will also display progress on-screen, unless INVIS is enabled to surpress screen output.
 
 Current version has some deviations from the standard. First, it will pad the transfer size to the next 128-byte boundary, without putting in padding. For example, if you run the command:
 
 `0000 10 F0BB call`
 
---the routine will transfer the first 128 bytes of memory, rather than the first 16 plus 112 bytes of padding. Routine should make five attempts to send each packet, though this has not been properly tested.
+--the routine will transfer the first 128 bytes of memory, rather than the first 16 plus 112 bytes of padding.
