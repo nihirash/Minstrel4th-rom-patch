@@ -11,7 +11,8 @@ XMODEM_EOT:	equ 0x04
 XMODEM_ACK:	equ 0x06
 XMODEM_NAK:	equ 0x15
 XMODEM_BS:	equ 0x80
-
+XMODEM_MAX_RETRY:	equ 5
+	
 	;; Minstrel System Variables
 FLAGS:	equ 0x3c3e
 
@@ -300,7 +301,7 @@ TRANS_LOOP:
 	inc bc
 	ld (CURR_PACKET),bc
 	
-	ld b,5			; Number of retries
+	ld b,XMODEM_MAX_RETRY	; Number of retries
 TRANS_LOOP_2:
 	push de
 	push hl
@@ -375,6 +376,132 @@ TRANS_CONT_5:
 
 	jp (iy) 		; Return to FORTH
 
+	;; Receive block of 128 bytes, w/ checksum, in line with
+	;; XMODEM protocol
+	;; 
+	;; On entry:
+	;;   HL - Address to which to write block
+	;; 
+	;; One exit:
+	;;   Carry Flag Set - Timed out (or other error)
+	;;   Carry Flag clear - Send completed and acknowledged
+	;;   HL - First address beyond block read
+	;;   D - non-zero if EOT; zero otherwise
+	;;   E - packet number read
+RECV_BLOCK
+	ld de, 0x0080
+	add hl, de
+	ld d,0
+	ld a,(CURR_PACKET)
+	cp 0x10
+	jr nz, RECV_BLOCK_CONT
+	inc d
+RECV_BLOCK_CONT:
+	ld e,a
+	and a			; Reset carry flag
+	
+	ret
+
+	;; Receive a block of memory via serial interface, using XMODEM
+	;; protocol
+	;;
+	;; On entry:
+	;;   TOS - address to which to write data
+	;; On exit:
+	;;   TOS - error code (0000 indicates success)
+RECEIVE:	
+	ld a,(FLAGS)		; If VIS, move print posn to new line
+	bit 4,a
+	jr nz, RECV_CONT_0
+	ld a, CR
+	rst 0x08
+
+	;; Initialise packet number
+	ld hl, 0x0000
+	ld (CURR_PACKET),hl
+	
+RECV_CONT_0:	
+	rst 0x18		; Retrieve TOS into DE
+
+	;; Transfer to HL, as will track where to store next value read
+	ld h,d
+	ld l,e
+
+	
+RECV_LOOP:
+	ld bc,(CURR_PACKET) 	; Advance to next packet
+	inc bc
+	ld (CURR_PACKET),bc
+
+	ld b,XMODEM_MAX_RETRY	; Number of retry
+RECV_LOOP_2:
+	push hl
+	push bc
+
+	;; Print block-receive information
+	ld a,(FLAGS)
+	bit 4,a
+	jr nz,RECV_CONT_2
+
+	;; Log receive
+	push hl
+	ld hl,RECVMSG
+	call PRINT_MSG
+	ld a,(CURR_PACKET)
+	call PRINT_HEX
+	ld a, CR
+	rst 0x08
+	pop hl
+
+RECV_CONT_2:	
+	call RECV_BLOCK
+	pop bc
+
+	jr nc, RECV_CONT_4	; Succeeded, so move on
+
+	pop hl
+	djnz RECV_LOOP_2	; Try again, if not maximum retries
+
+	ld de, 0xFFFF		; Indicate error
+	rst 0x10		; Push onto FORTH stack
+
+	jp (iy) 		; Return to FORTH
+
+RECV_CONT_4:
+	ld a,d			; D non-zero if EOT
+	and a
+
+	jr nz, RECV_CONT_6	; Jump to wrap-up
+
+	ld a,(CURR_PACKET)	; Check is packet we expect
+	cp e
+
+	jr z, RECV_CONT_5	; Jump forward if is
+
+	pop hl			; Retry, if not maximum retry
+	djnz RECV_LOOP_2
+	
+	ld de, 0xFFFF		; Indicate error
+	rst 0x10		; Push onto FORTH stack
+
+	jp (iy) 		; Return to FORTH
+
+RECV_CONT_5:
+	inc sp			; Discard old value of HL
+	inc sp			
+	jr RECV_LOOP		; Move to next block
+
+RECV_CONT_6:
+	inc sp			; Discard old value of HL
+	inc sp			
+
+	ld de,0x0000		; Indicates success
+	rst 0x10		; Push onto stack
+
+	jp (iy) 		; Return to FORTH
+
+	
+	
 LAST_PACKET:
 	db 0x00			; Temporary store for length of last
 				; packet
@@ -383,6 +510,8 @@ CURR_PACKET:
 	
 SECTMSG:
 	db "SENDING SECTOR ", 0x00
+RECVMSG:
+	db "RECEIVE SECTOR ", 0x00
 ERRMSG:	
 	db "SEND FAILED ", 0x00
 OKAYMSG:
