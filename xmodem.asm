@@ -4,6 +4,7 @@ DATA_PORT:	equ 0x81
 RTS_LOW:	equ 0x16 	; Clock div: +64, 8+1-bit
 RTS_HIGH:	equ 0x56	; Clock div: +64, 8+1-bit
 RESET:		equ 0x57	; 8+1-bit, interrupt off, RTS low
+RECV_RETRY:	equ 0x0100	; Retry could for RECV op
 	
 	;; XMODEM protocol parameters
 XMODEM_SOH:	equ 0x01
@@ -22,6 +23,30 @@ CR:		equ 0x0d
 	OUTPUT "xmodem.bin"
 	org 0xf000	      ; Start at 61,440 ( 0xf800 = 63,488d)
 	
+	;; (Part-blocking) receive byte from serial port
+	;;
+	;; On entry:
+	;;      None
+	;;
+	;; On exit:
+	;;      Carry Flag	- No data
+	;;     	Carry Clear 	- A, value read
+	;;     	Always 		- BC corrupt
+RECVW:	
+	ld bc, RECV_RETRY
+RECVW_CONT:
+	call RECV
+	ret nc
+
+	dec bc
+	ld a,b
+	or c
+
+	jr nz, RECVW_CONT
+
+	scf
+	ret
+	
 	;; (Non-blocking) receive byte from serial port
 	;; 
 	;; On entry:
@@ -29,7 +54,7 @@ CR:		equ 0x0d
 	;; On exit,
 	;;     	Carry Set 	- No data
 	;;     	Carry Clear 	- A, value read
-	;;     	Always 		- A' corrupt
+	;;     	Otherwise	- A corrupt
 	
 RECV:	ld a, RTS_LOW		; Set RTS low
 	out (CTRL_PORT),a  	; Confirm ready to receive
@@ -388,20 +413,115 @@ TRANS_CONT_5:
 	;;   HL - First address beyond block read
 	;;   D - non-zero if EOT; zero otherwise
 	;;   E - packet number read
-RECV_BLOCK
-	ld de, 0x0080
-	add hl, de
-	ld d,0
-	ld a,(CURR_PACKET)
-	cp 0x10
-	jr nz, RECV_BLOCK_CONT
-	inc d
-RECV_BLOCK_CONT:
-	ld e,a
-	and a			; Reset carry flag
+RECV_BLOCK:
+	call RECVW		; Try to retrieve value
 	
+	jr nc, RECV_BLOCK_CONT_1
+
+	push hl
+	ld hl,NORMSG
+	call PRINT_MSG
+	ld a, CR
+	rst 0x08
+	pop hl
+	
+	ret			; Return if no byte (carry still set)
+	
+RECV_BLOCK_CONT_1:	
+	cp XMODEM_SOH		; Check for start of packet
+	jr z, RECV_BLOCK_CONT_2
+
+	cp XMODEM_EOT		; Check for end of transfer
+	jr z, RECV_BLOCK_DONE
+
+	;;  Otherwise drain sender and report NAK
+RECV_BLOCK_DRAIN:
+	call RECVW
+	jr nc, RECV_BLOCK_DRAIN	; Read whole packet
+
+	ld a, XMODEM_NAK	; Confirm failed
+	call SEND
+
+	scf			; Indicates failure
 	ret
 
+	;; EOT means transfer is complete
+RECV_BLOCK_DONE:
+	push hl
+	ld hl, EOTMSG
+	call PRINT_MSG
+	ld a, CR
+	call 0x08
+	pop hl
+	
+	ld d,1
+	and a			; Reset carry flag
+
+	ret
+
+RECV_BLOCK_CONT_2:
+	push hl
+	ld hl, SOHMSG
+	call PRINT_MSG
+	ld a, CR
+	call 0x08
+	pop hl
+
+	call RECVW 		; Get packet number
+	jr c, RECV_BLOCK_DRAIN
+	ld e,a			; Store packet number
+
+	call PRINT_HEX
+	
+	call RECVW		; Get 255 - packet number
+	jr c, RECV_BLOCK_DRAIN
+	cpl			; Check is correct
+	cp e
+	push af
+	ld a,e
+	call PRINT_HEX
+	pop af
+	
+	jr nz, RECV_BLOCK_DRAIN
+
+	push hl
+	ld hl, BOKMSG
+	call PRINT_MSG
+	ld a, CR
+	rst 0x08
+	pop hl
+	
+	;;  Ready to receive some data
+	ld bc, 0x8000		; B = 128 bytes to be read
+	                        ; C = checksum
+RECV_BLOCK_LOOP_2:	
+	call RECVW
+	jr c, RECV_BLOCK_DRAIN
+
+	add a,c			; Update checksum
+	ld c,a
+	
+	ld (hl),a
+	inc hl
+	
+	djnz RECV_BLOCK_LOOP_2 	; Get next byte
+
+	;; Get checksum
+	call RECVW
+	jr c, RECV_BLOCK_DRAIN
+	cp c
+	jr nz, RECV_BLOCK_DRAIN
+
+	ld a, XMODEM_ACK
+	call SEND
+
+	xor a
+	ld d,a
+	
+	ret
+	
+
+	
 	;; Receive a block of memory via serial interface, using XMODEM
 	;; protocol
 	;;
@@ -417,16 +537,19 @@ RECEIVE:
 	rst 0x08
 
 	;; Initialise packet number
+RECV_CONT_0:	
 	ld hl, 0x0000
 	ld (CURR_PACKET),hl
 	
-RECV_CONT_0:	
 	rst 0x18		; Retrieve TOS into DE
 
 	;; Transfer to HL, as will track where to store next value read
 	ld h,d
 	ld l,e
 
+	;; Send initiation string
+	ld a, XMODEM_NAK
+	call SEND
 	
 RECV_LOOP:
 	ld bc,(CURR_PACKET) 	; Advance to next packet
@@ -500,7 +623,18 @@ RECV_CONT_6:
 
 	jp (iy) 		; Return to FORTH
 
+REC_TEST:
+	call RECVW
+	jr nc, REC_TEST_CONT
+	ld de,0xffff
+	rst 0x10
+	jp (iy)
 	
+REC_TEST_CONT:
+	ld d,0
+	ld e,a
+	rst 0x10
+	jp (iy)
 	
 LAST_PACKET:
 	db 0x00			; Temporary store for length of last
@@ -516,6 +650,10 @@ ERRMSG:
 	db "SEND FAILED ", 0x00
 OKAYMSG:
 	db "SEND COMPLETE ", 0x00
+EOTMSG:	db "EOT RECEIVED", 0x00
+SOHMSG:	db "SOH RECEIVED", 0x00
+NORMSG:	db "NO RESPONSE", 0x00
+BOKMSG:	db "PACKETID OKAY", 0x00
 	
 END:	
 	OUTEND
