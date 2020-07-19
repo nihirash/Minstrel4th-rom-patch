@@ -4,7 +4,6 @@ DATA_PORT:	equ 0x81
 RESET:		equ 0x03	; Reset the serial device
 RTS_LOW:	equ 0x16 	; Clock div: +64, 8+1-bit
 RTS_HIGH:	equ 0x56	; Clock div: +64, 8+1-bit
-RESET:		equ 0x57	; 8+1-bit, interrupt off, RTS low
 RECV_RETRY:	equ 0x0100	; Retry could for RECV op
 	
 	;; XMODEM protocol parameters
@@ -402,15 +401,12 @@ GET_BLOCK_LOOP:
 	inc hl			; Move to next address
 	djnz GET_BLOCK_LOOP	; Repeat if more data expected
 
-	ld de, 0x0000		; Indicate success
-	rst 0x10		; Push onto Forth stack
-	jp (iy)			; Return to Forth
+	and a			; Reset carry flag
+	ret
 	
 GET_BLOCK_TO:
-	ld d, 0xff
-	ld e, b
-	rst 0x10		; Push onto Forth stack
-	jp (iy)			; Return to Forth
+	scf			; Indicate error
+	ret
 
 	;; Check that packet in memory is valid XMODEM packet
 	;;
@@ -443,7 +439,7 @@ CHECK_BLOCK_CONT_01:
 	ld e,(hl)
 	
 	inc hl
-	ld a,hl
+	ld a,(hl)
 
 	cpl			; Calculate 255-a
 	cp e			; Should be same
@@ -572,7 +568,7 @@ RECV_LOOP_2:
 	pop hl
 
 RECV_CONT_2:	
-	call RECV_BLOCK
+	call GET_BLOCK
 	pop bc
 
 	jr nc, RECV_CONT_4	; Succeeded, so move on
@@ -619,15 +615,33 @@ RECV_CONT_6:
 	jp (iy) 		; Return to FORTH
 
 REC_TEST:
-	call RECVW
-	jr nc, REC_TEST_CONT
-	ld de,0xffff
+	call DRAIN_SENDER
+
+	rst 0x18		; Retrieve acknowledge string
+	ld a,e
+	
+	rst 0x18
+	ld h,d
+	ld l,e
+	
+	ld hl, PACKET_BUFFER
+	
+	call GET_BLOCK
+
+	jr c, REC_ERR
+
+	ld hl, PACKET_BUFFER
+
+	call CHECK_BLOCK
+	
+	jr c, REC_ERR
+
+	ld d,0
 	rst 0x10
 	jp (iy)
 	
-REC_TEST_CONT:
-	ld d,0
-	ld e,a
+REC_ERR:	
+	ld de, 0xffff
 	rst 0x10
 	jp (iy)
 	
@@ -649,6 +663,7 @@ EOTMSG:	db "EOT RECEIVED", 0x00
 SOHMSG:	db "SOH RECEIVED", 0x00
 NORMSG:	db "NO RESPONSE", 0x00
 BOKMSG:	db "PACKETID OKAY", 0x00
-	
+
+PACKET_BUFFER:	ds 0x86
 END:	
 	OUTEND
