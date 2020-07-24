@@ -4,7 +4,8 @@ DATA_PORT:	equ 0x81
 RESET:		equ 0x03	; Reset the serial device
 RTS_LOW:	equ 0x16 	; Clock div: +64, 8+1-bit
 RTS_HIGH:	equ 0x56	; Clock div: +64, 8+1-bit
-RECV_RETRY:	equ 0x0100	; Retry could for RECV op
+RECV_RETRY:	equ 0x0100	; Retry count for RECV op
+SEND_RETRY:	equ 0xbbbb	; Retry count for SEND op
 	
 	;; XMODEM protocol parameters
 XMODEM_SOH:	equ 0x01
@@ -25,18 +26,20 @@ LF:	equ 0x0a
 	
 	org 0xf000	      ; Start at 61,440 ( 0xf800 = 63,488d)
 	
+	;; ========================================================
 	;; (Part-blocking) receive byte from serial port
 	;;
 	;; On entry:
 	;;      None
 	;;
 	;; On exit:
-	;;      Carry Flag	- No data
+	;;      Carry Flag	- Timed out, no data
 	;;     	Carry Clear 	- A, value read
 	;;     	Always 		- BC corrupt
-RECVW:	
-	ld bc, RECV_RETRY
-RECVW_CONT:
+	;; ========================================================
+RECVW:	ld bc, RECV_RETRY
+	
+RECVW_LOOP:
 	call RECV
 	ret nc
 
@@ -44,11 +47,12 @@ RECVW_CONT:
 	ld a,b
 	or c
 
-	jr nz, RECVW_CONT
+	jr nz, RECVW_LOOP
 
 	scf
 	ret
 	
+	;; ========================================================
 	;; (Non-blocking) receive byte from serial port
 	;; 
 	;; On entry:
@@ -57,6 +61,7 @@ RECVW_CONT:
 	;;     	Carry Set 	- No data
 	;;     	Carry Clear 	- A, value read
 	;;     	Otherwise	- A corrupt
+	;; ========================================================
 	
 RECV:	ld a, RTS_LOW		; Set RTS low
 	out (CTRL_PORT),a  	; Confirm ready to receive
@@ -72,6 +77,7 @@ RECV:	ld a, RTS_LOW		; Set RTS low
 	in a, (DATA_PORT)	; Read byte
 	
 	and a 			; Reset carry, to indicate success
+
 	ret
 
 RECV_NO_BYTE:	
@@ -79,61 +85,74 @@ RECV_NO_BYTE:
 	out (CTRL_PORT),a
 	
 	scf			; Set carry, to indicate timeout
+
 	ret
-	
-	;; Blocking Send byte to serial port
+
+	;; ========================================================
+	;; Part-blocking send byte to serial port
+	;; 
 	;; On entry:
 	;;     A = byte to send
+	;; 
 	;; On exit,
-	;;     Carry Flag Set - Timed out
-	;;     Carry Flag Clear - Success
-	;;     Always - AF, BC corrupted
-SENDW:	ld bc, 0xBBBB		; Maximum retries
+	;;     Carry Set 	- Timed out
+	;;     Carry Clear 	- Success
+	;;     Always 		- AF, BC corrupted
+	;; ========================================================
 
-	push af
+SENDW:	ld bc, SEND_RETRY	; Maximum retries
+	
+	push af			; Save byte to send
 
 SENDW_CHECK:
-	xor a
-	in a,(CTRL_PORT)
-	bit 1,a
+	xor a			;
+	in a,(CTRL_PORT)	; Check if ready to send
+	and 0x02		;
 
-	jr nz, SEND_BYTE
-	dec bc
+	jr nz, SEND_BYTE	; Ready to send
+	
+	dec bc			; Try again
 	ld a,b
 	or c
 	jr nz, SENDW_CHECK
 
-	pop af
-	scf
+	pop af			; Balance stack
+	
+	scf			; Indicates time-out
 
 	ret
-SEND_BYTE:
-	pop af
-	out (DATA_PORT),a
-	and a
-	ret
 	
-	;; Send block of 128 bytes, w/ checksum, in line with
+SEND_BYTE:
+	pop af			; Retrieve data to send
+	out (DATA_PORT),a
+	
+	and a			; Indicates success	
+	
+	ret
+
+	;; ========================================================
+	;; Send packet of 128 bytes, w/ checksum, in line with
 	;; XMODEM protocol
 	;; 
 	;; On entry:
-	;;   A  - Sector number to send
+	;;   A  - Packet number to send
 	;;   HL - Address of block to send
 	;; 
 	;; One exit:
-	;;   Carry Flag Set - Timed out (or other error)
-	;;   Carry Flag clear - Send completed and acknowledged
+	;;   Carry Set 		- Timed out (or other error)
+	;;   Carry Clear 	- Send completed and acknowledged
+	;; ========================================================
+
 SEND_BLOCK:
-	;; Send header information
-	push af			; Store block number
+	push af			; Store packet number
 
 	;; Send header
 SB_CONT_3:
 	ld a, XMODEM_SOH
 	call SENDW
 	
-	pop af			; Restore Block number
-	push af			; Save Block number
+	pop af			; Restore packet  number
+	push af			; Save packet number
 	call SENDW
 	
 	pop af			; Restore Sector number
@@ -142,18 +161,22 @@ SB_CONT_3:
 	
 	xor a			; Reset checksum
 	ld e,a			; and store in reg_E
+	
 	ld b, XMODEM_BS		; Size of payload to be sent
 	
 SB_LOOP:
 	ld c,(hl)		; Retrieve byte to send
-	inc hl
-	ld a,e
+	inc hl			; Advance to next location
+	
+	ld a,e			; 
 	add a,c			; Update checksum
-	ld e,a			; Save it
-	ld a,c
-	push bc
-	call SENDW
-	pop bc
+	ld e,a			; 
+	
+	ld a,c			; 
+	push bc			; 
+	call SENDW		; Send byte
+	pop bc			;
+	
 	djnz SB_LOOP		; Loop to send next byte
 
 	;; Send checksum
@@ -166,28 +189,33 @@ SB_LOOP:
 SB_LOOP_2:	
 	call RECV
 
-	jr nc, SB_CONT
+	jr nc, SB_CONT		; Byte received
 
-	dec bc
-	ld a,b
-	or c
-	jr nz,SB_LOOP_2
+	dec bc			;
+	ld a,b			; Try again
+	or c			;
+	jr nz,SB_LOOP_2		;
 
-	scf
-	ret			; Carry set indicates error
+	scf			; Indicates failure
+	
+	ret			
 
 SB_CONT:	
-	cp XMODEM_ACK		; If successful, carry flag clear
-	ret z
+	cp XMODEM_ACK		; Check for acknowledgement
+	ret z			; If successful, carry flag clear
 
 	scf			; Otherwise, indicate fail
+	
 	ret
 
+	;; ========================================================
 	;; Print contents of A register as a two-digit hex number
 	;; On entry:
 	;; 	A contains value to be printed
 	;; On exit:
 	;; 	A and alternate registers corrupted
+	;; ========================================================
+
 PRINT_HEX:	
 	push af
 	srl a			; Shift high nibble into low nibble
@@ -206,178 +234,26 @@ PRINT_CNT:
 	rst 0x08		; Print it
 	ret			; Return to next digit or calling routine
 
+	;; ========================================================
 	;; Print status message to console
 	;; On entry:
 	;; 	HL points to start of message
 	;; On exit:
 	;; 	A, HL, and alternative registers are corrupt
-	;; 
+	;; ========================================================
 PRINT_MSG:
-	;; Print Message
-	ld a, (hl)
+	ld a, (hl)		; Retrieve next character
+	
 	and a			; Null byte indicates end of message
 	ret z
-	inc hl
-	push hl			; Probably not needed
-	rst 0x08
-	pop hl
-	jr PRINT_MSG
-
-	;; Send a block of memory via serial interface, using XMODEM
-	;; protocol
-	;;
-	;; On entry:
-	;;   2OS - Address of start of block
-	;;   TOS - Length of block
-	;; On exit:
-	;;   TOS - error code (0000 indicates success)
-FORTH_TRANSMIT:	
-	ld a,(FLAGS)		; If VIS, move print posn to new line
-	bit 4,a
-	jr nz, TRANS_CONT_0
-	ld a, CR
-	rst 0x08
-
-TRANS_CONT_0:	
-	rst 0x18		; Retrieve TOS into DE
-
-	;; Work out number of packets to send. Instead of dividing
-	;; by 128, we multiple by 2 and ignore lowest byte.
-
-	xor a			; Multiple DE by 2, leaving
-	sla e			; result in ADE
-	rl d
-	rla
-
-	;; Transfer number of packets to BC
-	ld b,a
-	ld c,d
-
-	;; Check for remainder
-	ld a,e
-	srl a			; Divide by 2
-	and a
-	jr z, TRANS_CONT_1
-	inc bc			; One extra packet for remainder
-
-TRANS_CONT_1:
 	
-	ld (LAST_PACKET),a	; Store for later
+	inc hl			; Advance to next character
 
-	;; Initialise packet number
-	ld hl, 0x0000		; XMODEM starts packet count at 1
-	                        ; though value increased at beginning
-	                        ; of each send opp
-	ld (CURR_PACKET),hl	; Store for later
-	
-	;;  Retrieve start of block into HL
-	rst 0x18
-	ld h,d
-	ld l,e
+	rst 0x08		; Print it
 
-	;; Make transmission
-	ld d,b			; Move no. blocks to DE
-	ld e,c
-	
-	;; At this point:
-	;;     HL = start
-	;;     DE = no packets
-	;;     CURR_PACKET = packet number
+	jr PRINT_MSG		; Next
 
-	;; Wait for NAK
-TRANS_START:
-	call RECV
-	jr c, TRANS_CONT_00	; No response
-	cp XMODEM_NAK
-	jr nz, TRANS_CONT_00
-	jr TRANS_LOOP
-TRANS_CONT_00:	
-	dec bc
-	ld a,b
-	or c
-	jr nz, TRANS_START
-
-TRANS_LOOP:
-	;; Increase current packet
-	ld bc,(CURR_PACKET)
-	inc bc
-	ld (CURR_PACKET),bc
-	
-	ld b,XMODEM_MAX_RETRY	; Number of retries
-TRANS_LOOP_2:
-	push de
-	push hl
-	push bc
-
-	;; Print block-sending information
-	ld a,(FLAGS)		; Check if VIS enabled
-	bit 4,a
-	jr nz, TRANS_CONT_2
-
-	;; Report send
-	push hl
-	ld hl, SECTMSG
-	call PRINT_MSG
-	ld a, (CURR_PACKET)
-	call PRINT_HEX
-	ld a, CR
-	rst 0x08
-	pop hl
-	
-TRANS_CONT_2:	
-	ld a,(CURR_PACKET)	; Low byte of CURR_PACKET value
-	call SEND_BLOCK
-	pop bc
-	jr nc, TRANS_CONT_4	; Succeeded, so move on
-	pop hl			; Otherwise, retry send
-	pop de
-	djnz TRANS_LOOP_2	; If not at maximum retries
-
-	;; Abandon transfer and report error
-	ld a,(FLAGS)
-	bit 4,a
-	jr nz, TRANS_CONT_3
-
-	ld hl, ERRMSG
-	call PRINT_MSG
-	ld a, CR
-	rst 0x08
-
-TRANS_CONT_3:
-	ld de, 0xFFFF		; Indicate error
-	rst 0x10		; Push onto FORTH stack
-
-	jp (iy)			; Return to FORTH
-	
-TRANS_CONT_4:
-	pop de 			; Effectively discard old value of HL
-	pop de			; Retrieve no. block left to transmit
-
-	dec de			; Decrease no. packets to send
-	ld a,d			; Check if we are done
-	or e
-	
-	jr nz, TRANS_LOOP	; Loop back for next packet
-	
-	ld a, XMODEM_EOT	; Indicate end of transfer
-	call SENDW
-
-	;; Confirm success
-	ld a,(FLAGS)
-	bit 4,a
-	jr nz, TRANS_CONT_5
-
-	ld hl, OKAYMSG
-	call PRINT_MSG
-	ld a, CR
-	rst 0x08
-
-TRANS_CONT_5:	
-	ld de,0x0000		; Indicates success
-	rst 0x10		; Push onto stack
-
-	jp (iy) 		; Return to FORTH
-
+	;; ========================================================
 	;; Attempt to read an XMODEM packet via serial interface
 	;; Packet consists of 132 bytes, as follows:
 	;; - SOH
@@ -391,10 +267,9 @@ TRANS_CONT_5:
 	;;      hl - start of 132-byte buffer in which to hold packet
 	;;
 	;; On exit
-	;; 	CF reset - success
-	;; 	CF set - timed out (B contains 132 - bytes read)
-
-
+	;; 	Carry reset 	- success
+	;; 	Carry set 	- timed out (B = 132 - bytes read)
+	;; ========================================================
 GET_BLOCK:
 	call SENDW		; Transmit initiation code to sender
 
@@ -489,6 +364,17 @@ DRAIN_SENDER:
 
 	ret
 
+	;; ========================================================
+	;; Reset Serial interface and configure for 8-bit and
+	;; 1 stop bit, RTS high to indicate not ready; serial-card
+	;; interuupts off
+	;; 
+	;; On entry
+	;;   --
+	;; 
+	;; On exit
+	;;   --
+	;; ========================================================
 FORTH_RESET:
 	ld a, RESET
 	out (CTRL_PORT),a	; Reset serial device
@@ -498,6 +384,15 @@ FORTH_RESET:
 
 	jp (iy)			; Return to FORTH
 	
+	;; ========================================================
+	;; Attempt to receive a byte from serial interface
+	;;
+	;; On entry:
+	;;   --
+	;;
+	;; On exit:
+	;;   TOS  	- byte read (-1, if no data)
+	;; ========================================================
 FORTH_RX:
 	ld de, 0xffff
 
@@ -512,6 +407,15 @@ RX_CONT:
 
 	jp (iy)
 	
+	;; ========================================================
+	;; Send a byte from serial interface
+	;;
+	;; On entry:
+	;;   TOS	- byte to be sent
+	;;
+	;; On exit:
+	;;   TOS	- Status (0=success; -1=fail)
+	;; ========================================================
 FORTH_TX:
 	rst 0x18		; Retrieve value from stack to DE
 	ld a,e
@@ -527,13 +431,16 @@ TX_CONT:
 	jp (iy)
 
 	
-	;; Receive a block of memory via serial interface, using XMODEM
-	;; protocol
+	;; ========================================================
+	;; Receive a block of memory via serial interface, using
+	;; XMODEM protocol
 	;;
 	;; On entry:
-	;;   TOS - address to which to write data
+	;;   TOS 	- address to which to write data
+	;; 
 	;; On exit:
-	;;   TOS - error code (0000 indicates success)
+	;;   TOS 	- error code (0000 indicates success)
+	;; ========================================================
 FORTH_RECEIVE:	
 	ld a,(FLAGS)		; If VIS, move print posn to new line
 	bit 4,a
@@ -711,38 +618,166 @@ REC_ERR:
 	rst 0x10
 	jp (iy)
 	
-TEST:	
-	ld a,1			; Block number
-	ld hl,0x0000		; Start of block to send
-TEST_LOOP:	
-	ld b,5			; Number of retries
-TEST_LOOP_2:
-	push af
-	push bc
-	push hl
-	call SEND_BLOCK
-	pop hl
-	pop bc
-	jr nc, TEST_CONT_1
-	pop af
-	djnz TEST_LOOP_2
-TEST_CONT_1:
-	pop af
-	inc a
-	cp 0x10
-	jr nz, TEST_LOOP
+	;; ========================================================
+	;; Send a block of memory via serial interface, using XMODEM
+	;; protocol
+	;;
+	;; On entry:
+	;;   2OS - Address of start of block
+	;;   TOS - Length of block
+	;; On exit:
+	;;   TOS - error code (0000 indicates success)
+	;; ========================================================
+FORTH_TRANSMIT:	
+	ld a,(FLAGS)		; If VIS, move print posn to new line
+	bit 4,a
+	jr nz, TRANS_CONT_0
+	ld a, CR
+	rst 0x08
+
+TRANS_CONT_0:	
+	rst 0x18		; Retrieve TOS into DE
+
+	;; Work out number of packets to send. Instead of dividing
+	;; by 128, we multiple by 2 and ignore lowest byte.
+	xor a			; Multiple DE by 2, leaving
+	sla e			; result in ADE
+	rl d
+	rla
+
+	;; Transfer number of packets to BC
+	ld b,a
+	ld c,d
+
+	;; Check for remainder
+	ld a,e
+	srl a			; Divide by 2
+	and a
+	jr z, TRANS_CONT_1
+	inc bc			; One extra packet for remainder
+
+TRANS_CONT_1:
+	ld (LAST_PACKET),a	; Store for later
+
+	;; Initialise packet number
+	ld hl, 0x0000		; XMODEM starts packet count at 1
+	                        ; though value incremented at
+	                        ; beginning of each send opp
+	ld (CURR_PACKET),hl	; Store for later
 	
-	ld a, XMODEM_EOT
+	;;  Retrieve start of block into HL
+	rst 0x18
+	ld h,d
+	ld l,e
+	
+	;; Move no. blocks to DE
+	ld d,b
+	ld e,c
+	
+	;; At this point:
+	;;     HL = start
+	;;     DE = no packets
+	;;     CURR_PACKET = packet number
+
+	;; Wait for NAK (need to add test for break, to prevent
+	;; infinite loop)
+TRANS_START:
+	call RECV
+	jr c, TRANS_CONT_00	; No response
+	cp XMODEM_NAK
+	jr nz, TRANS_CONT_00
+	jr TRANS_LOOP
+TRANS_CONT_00:	
+	dec bc
+	ld a,b
+	or c
+	jr nz, TRANS_START
+
+TRANS_LOOP:
+	;; Increase current packet
+	ld bc,(CURR_PACKET)
+	inc bc
+	ld (CURR_PACKET),bc
+	
+	ld b,XMODEM_MAX_RETRY	; Number of retries
+TRANS_LOOP_2:
+	push de
+	push hl
+	push bc
+
+	;; Print block-sending information
+	ld a,(FLAGS)		; Check if VIS enabled
+	bit 4,a
+	jr nz, TRANS_CONT_2
+
+	;; Log send to screen
+	push hl
+	ld hl, SECTMSG
+	call PRINT_MSG
+	ld a, (CURR_PACKET)
+	call PRINT_HEX
+	ld a, CR
+	rst 0x08
+	pop hl
+	
+TRANS_CONT_2:	
+	ld a,(CURR_PACKET)	; Low byte of CURR_PACKET value
+	call SEND_BLOCK
+	pop bc
+	jr nc, TRANS_CONT_4	; Succeeded, so move on
+	pop hl			; Otherwise, retry send
+	pop de
+	djnz TRANS_LOOP_2	; If not at maximum retries
+
+	;; Abandon transfer and report error
+	ld a,(FLAGS)
+	bit 4,a
+	jr nz, TRANS_CONT_3
+
+	ld hl, ERRMSG
+	call PRINT_MSG
+	ld a, CR
+	rst 0x08
+
+TRANS_CONT_3:
+	ld de, 0xFFFF		; Indicate error
+	rst 0x10		; Push onto FORTH stack
+
+	jp (iy)			; Return to FORTH
+	
+TRANS_CONT_4:
+	pop de 			; Effectively discard old value of HL
+	pop de			; Retrieve no. packets left to transmit
+
+	dec de			; Decrease no. packets to send
+	ld a,d			; Check if we are done
+	or e
+	
+	jr nz, TRANS_LOOP	; If not, loop back for next packet
+
+	;;  If done, indicate End of Transfer
+	ld a, XMODEM_EOT	
 	call SENDW
+
+	;; Confirm success
+	ld a,(FLAGS)
+	bit 4,a
+	jr nz, TRANS_CONT_5
+
+	ld hl, OKAYMSG
+	call PRINT_MSG
+	ld a, CR
+	rst 0x08
+
+TRANS_CONT_5:	
+	ld de,0x0000		; Indicates success
+	rst 0x10		; Push onto stack
 
 	jp (iy) 		; Return to FORTH
 
-LAST_PACKET:
-	db 0x00			; Temporary store for length of last
-				; packet
-CURR_PACKET:
-	dw 0x0000		; Temporary story for packet number
-	
+	;; ========================================================
+	;; Messages
+	;; ========================================================
 SECTMSG:
 	db "SENDING SECTOR ", 0x00
 RECVMSG:
@@ -755,7 +790,17 @@ EOTMSG:	db "EOT RECEIVED", 0x00
 SOHMSG:	db "SOH RECEIVED", 0x00
 NORMSG:	db "NO RESPONSE", 0x00
 PCKMSG:	db "PACKET ERROR", 0x00
-
-PACKET_BUFFER:	ds 0x86
+	
+	;; ========================================================
+	;; Workspace
+	;; ========================================================
+LAST_PACKET:
+	db 0x00			; Temporary store for length of last
+				; packet
+CURR_PACKET:
+	dw 0x0000		; Temporary story for packet number
+	
+PACKET_BUFFER:	ds 0x86		; Temporary buffer for next packet
+	
 END:	
 	OUTEND
