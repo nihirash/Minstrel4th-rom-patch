@@ -3,9 +3,20 @@ BINARY_GET_COMMAND = 'p'
 BINARY_PUT_COMMAND = 'P'
 GET_CATALOG_COMMAND = 'C'
 GET_TAP_BLOCK_COMMAND = 'D'
+SAVE_TAP_BLOCK_COMMAND = 'U'
 TAP_IN_COMMAND = 'T'
+TAP_OUT_COMMAND = 't'
+
+;;;;;;;;;;;;;;;;;;;;;;; Forth's words used
+F_WORD_TO_PAD = #1A10
+F_PREPARE_BSAVE_HEADER = #1A3D
+F_EXIT = #04B6 
 
 ;;;;;;;;;;;;;;;;;;;;;;; Forth's vars section
+FORTH_MODE = #0ec3
+
+CRC_FIELD = #27fe
+
 TMP_CURRENT = #2701
 TMP_CONTEXT = #2703
 TMP_VOCLINK = #2705
@@ -88,12 +99,90 @@ loadVar:
     call ureadb : ld (hl), a : inc hl : call ureadb : ld (hl), a : inc hl
     ret
 
+sendCRC:
+    ld e, a
+    ld a, (CRC_FIELD)
+    xor (hl) : ld (CRC_FIELD), a
+    call uwrite
+    ret
+
+storeBlock:
+    di
+    push hl, de
+    ;; Send command
+    ld e, SAVE_TAP_BLOCK_COMMAND : call uwrite
+    call ureadb : and a : jr z, .error
+
+    pop de : push de
+    ;; Send chunk size
+    inc de 
+    ld a, e
+    call sendCRC : ld a, d : call sendCRC
+
+    ; Blank crc
+    xor a : ld (CRC_FIELD), a
+
+    pop de, hl
+.loop
+
+    push hl, de
+    ld a, (hl)
+    call sendCRC
+    pop de, hl
+    inc hl : dec de
+    ld a, d : or e : jr z, .fin
+    jr .loop
+.fin
+    ld a, (CRC_FIELD), e, a : call uwrite
+    ei
+    ret
+.error
+    pop de, hl
+    ei
+    rst #20 : db #0a
+    ret
+
 ;;;;;;;;;;;;;;;;;;;;;;; Words section
+hw_store_data: ; Hidden word
+    dw .code
+.code
+    call uart_init
+    ld a, (#2302) ; length of word in pad
+    and a : jp z, #1AB6 ; Tape error
+    ld hl, (#230c), a, h  : or l : jp z, #1AB6
+    push hl
+    ld de, #19, hl, #2301
+    call storeBlock
+    pop de
+    ld hl, (#230e)
+    call storeBlock
+    jp (iy)
+
+w_bsave:
+    FORTH_WORD_ADDR "BSAVE", FORTH_MODE
+    dw F_PREPARE_BSAVE_HEADER  
+    dw hw_store_data
+    dw F_EXIT
+    
+w_save:
+    FORTH_WORD_ADDR "SAVE", FORTH_MODE
+    dw F_WORD_TO_PAD              
+    dw hw_store_data
+    dw F_EXIT
+
+w_tapout:
+    FORTH_WORD "TAPOUT"
+    di
+    call uart_init
+    ld e, TAP_OUT_COMMAND : call uwrite
+    jr w_tapin.common
+
 w_tapin:
     FORTH_WORD "TAPIN"
     di
     call uart_init
     ld e, TAP_IN_COMMAND : call uwrite
+.common
     call sendFileName : jr c, .error
     call ureadb : and a : jr z, .error ; Is file found?
     ei

@@ -27,3 +27,13 @@
         db .name_end - .name
         dw $ + 2
     ENDM
+
+    MACRO FORTH_WORD_ADDR wordname, addr
+.name
+        ABYTEC 0 wordname
+.name_end
+        dw LINK
+        SET_VAR LINK, $
+        db .name_end - .name
+        dw addr
+    ENDM

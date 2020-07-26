@@ -7,7 +7,8 @@ import datetime
 ############### CHANGE HERE TO YOUR UART DEV
 port = "/dev/tty.usbserial-0001" # For windows you may write just "COM3" or whatever.
 fspath = os.path.abspath("filesystem")
-tapfile = 0
+tapin = 0
+tapout = 0
 
 uart = serial.Serial(port=port, baudrate=115200, rtscts=True)
 
@@ -85,10 +86,28 @@ def extract_file_name():
     name = uart.read_until(b'\0').decode('ascii', errors = 'ignore').replace('\0', '')
     return merge_name(name)
 
-def load_dict_tap():
+def save_tap():
+    log("Saving block")
+    if tapout == 0:
+        send_byte(b'\0')
+        return
+    send_byte(b'\1')
+
+    lenl = uart.read(1)
+    lenh = uart.read(1)
+    tapout.write(lenl)
+    tapout.write(lenh)
+    len = int.from_bytes(lenl, "big") + 256 * int.from_bytes(lenh, "big") 
+    log("Block len: " + str(len))
+    for i in range(len):
+        tapout.write(uart.read(1))
+        tapout.flush()
+    
+
+def load_tap():
     try:
-        blocksize = tapfile.read(1)
-        tapfile.read(1)
+        blocksize = tapin.read(1)
+        tapin.read(1)
         if (blocksize != b'\x1a'):
             send_byte(b'\0')
             log('wrong tape file - ')
@@ -96,10 +115,10 @@ def load_dict_tap():
             return
         send_byte(b'\1')
 
-        block_type = tapfile.read(1)
+        block_type = tapin.read(1)
         send_byte(block_type)
 
-        name = tapfile.read(10)
+        name = tapin.read(10)
         for i in range(10):
             send_byte(name[i:i+1])
         
@@ -109,17 +128,17 @@ def load_dict_tap():
 
         log('Confirmed')
         
-        datalenl = tapfile.read(1)
-        datalenh = tapfile.read(1)
+        datalenl = tapin.read(1)
+        datalenh = tapin.read(1)
 
-        dataorgl = tapfile.read(1)
-        dataorgh = tapfile.read(1)
+        dataorgl = tapin.read(1)
+        dataorgh = tapin.read(1)
         org = int.from_bytes(dataorgl, "big") + 256 * int.from_bytes(dataorgh, "big")
         log("Data org " + str(org))
 
         for i in range(5):
-            l = tapfile.read(1)
-            h = tapfile.read(1)
+            l = tapin.read(1)
+            h = tapin.read(1)
             send_byte(l)
             send_byte(h)
             var_val = int.from_bytes(l, "big") + 256 * int.from_bytes(h, "big")
@@ -133,44 +152,67 @@ def load_dict_tap():
 
         blocklen = int.from_bytes(datalenl, "big") + 256 * int.from_bytes(datalenh, "big") 
         log("Sending " + str(blocklen) + " bytes block")
-        tapfile.read(3) # we don't need this bytes
+        tapin.read(3) # we don't need this bytes
 
         for i in range(blocklen):
-            send_byte(tapfile.read(1))
-        tapfile.read(1)
+            send_byte(tapin.read(1))
+        tapin.read(1)
     except:
         send_byte(b'\0')
 
 
 def tap_in():
-    global tapfile
+    global tapin
     fname = merge_name(extract_file_name())
-    log("Tap file "+fname)
+    log("Tape in "+fname)
     if os.path.isfile(fname):
         try:
-            tapfile.close()
+            tapin.close()
         except:
             pass
 
-        tapfile = open(fname, "rb")
+        tapin = open(fname, "rb")
         log("Tap opened!")
         send_byte(b'\1')
     else:
         send_byte(b'\0')
 
+def tap_out():
+    global tapout
+    fname = merge_name(extract_file_name())
+    log("Tape out " +fname)
+    try:
+        tap_out.close()
+    except:
+        pass
+    
+    tapout = open(fname, "ab")
+    log("Tap opened!")
+    send_byte(b'\1')
 
 log("Started")
 while True:
     cmd = uart.read(1)
-    if cmd == b'T':
+    if cmd == b't':
+        log('Tape out')
+        tap_out()
+        continue
+    elif cmd == b'T':
         log('Tape in')
         tap_in()
-    if cmd == b'D':
+        continue
+    elif cmd == b'U':
+        log('Save block to TAP')
+        save_tap()
+        continue
+    elif cmd == b'D':
         log('Load block from TAP')
-        load_dict_tap()
-    if cmd == b'C':
+        load_tap()
+        continue
+    elif cmd == b'C':
         log('Get catalog required')
         get_catalog()
+        continue
     elif cmd == b'p':
         log('Send plain file commad received')
         send_plain_file(extract_file_name())
@@ -178,6 +220,9 @@ while True:
     elif cmd == b'P': 
         log('Receive plain file command received')
         recv_plain_file(extract_file_name())
+        continue
+    else:
+        log("Strange command received: " + str(cmd))
         continue
 
 

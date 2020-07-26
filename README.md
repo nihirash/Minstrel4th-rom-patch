@@ -19,7 +19,9 @@ Current supported operations:
  * ubput - upload plain binary to dev.server. Syntax is: `ADDRESS SIZE ubput FILENAME`, for example `0 16384 ubput dump.bin` will upload 16384 bytes starting from 0 address  
  * ls - get current directory files listing
  * tapin - select tape image to load from
+ * tapout - select tape image for storing. If file exists - new files will be appended.
  * load/bload works like with tape but with image. Optionally you can skip file name, for example: `tapin tetris.tap load` and `tapin tetris.tap load tetris` makes same result.
+ * save/bsave works in pure way as on original ROM but saves to TAP-file
 
 ## XMODEM
 
