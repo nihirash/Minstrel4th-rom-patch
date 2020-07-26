@@ -5,7 +5,7 @@ import os
 import datetime
 
 ############### CHANGE HERE TO YOUR UART DEV
-port = "/dev/tty.usbserial-0001"
+port = "/dev/tty.usbserial-0001" # For windows you may write just "COM3" or whatever.
 fspath = os.path.abspath("filesystem")
 tapfile = 0
 
@@ -18,7 +18,6 @@ def send_byte(b: bytes):
    while uart.cts == False:
        pass
    uart.write(b)
-   #log("Sending " + str(int.from_bytes(b, "big")))
 
 def read_byte():
     return uart.read(1)
