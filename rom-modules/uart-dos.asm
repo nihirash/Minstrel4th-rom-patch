@@ -2,8 +2,31 @@
 BINARY_GET_COMMAND = 'p'
 BINARY_PUT_COMMAND = 'P'
 GET_CATALOG_COMMAND = 'C'
+GET_TAP_BLOCK_COMMAND = 'D'
+TAP_IN_COMMAND = 'T'
+
+;;;;;;;;;;;;;;;;;;;;;;; Forth's vars section
+TMP_CURRENT = #2701
+TMP_CONTEXT = #2703
+TMP_VOCLINK = #2705
+TMP_STKBOT = #2707
+TMP_DICT = #2709
+
+VAR_CURRENT = #3C31
+VAR_CONTEXT = #3C33
+VAR_VOCLNK = #3C35 
+VAR_STKBOT = #3C37
+VAR_DICT = #3C4C ;; ACTUAL
+VAR_SPARE = #3C3B
 
 ;;;;;;;;;;;;;;;;;;;;;;; Assembly routines
+
+printZ:
+    ld a, (hl)
+    and a : ret z
+    push hl : rst #08 : pop hl
+    inc hl
+    jr printZ 
 
 ; Routine that sends file name by uart as ASCIIZ string
 ; Filename goes after(SIC!) your word. Like usual load/bload
@@ -33,8 +56,142 @@ sendFileName:
     scf
     ret
 
+justSkipName:
+     call #05df
+     ret c
+     call #07da
+     ret
+
+; Receive from UART block type and name and display it
+getBlockTypeAndName:
+    call ureadb : ld e, a ; Save block type
+    ld hl, block_dict
+    and a : jr z, .doPrint
+    ld hl, block_bytes
+.doPrint
+    call printZ
+    ld b, 10
+.loop
+    push bc
+    call ureadb : rst #08
+    pop bc
+    djnz .loop
+
+    ld a, 13 : rst #08
+    ld a, e
+    ret
+
+block_dict db 13, "Dict: ", 0
+block_bytes db 13, "Bytes: ", 0
+
+loadVar:
+    call ureadb : ld (hl), a : inc hl : call ureadb : ld (hl), a : inc hl
+    ret
 
 ;;;;;;;;;;;;;;;;;;;;;;; Words section
+w_tapin:
+    FORTH_WORD "TAPIN"
+    di
+    call uart_init
+    ld e, TAP_IN_COMMAND : call uwrite
+    call sendFileName : jr c, .error
+    call ureadb : and a : jr z, .error ; Is file found?
+    ei
+    jp (iy)
+.error
+    ei
+    ld e, 0 : call uwrite
+    rst #20 : db #0a
+    jp (iy)
+
+w_bload:
+    FORTH_WORD "BLOAD"
+    di
+    call justSkipName
+    call uart_init
+    ld e, GET_TAP_BLOCK_COMMAND : call uwrite
+    call ureadb : and a : jp z, w_load.error
+    call getBlockTypeAndName : and a : jp z, w_load.error
+    ld e, 1 : call uwrite
+    ld hl, TMP_CURRENT 
+    ld b, 10 
+.varsloop
+    push bc
+    call ureadb ;; IGNORE VARS
+    pop bc
+    djnz .varsloop
+    call ureadb : ld l, a : call ureadb : ld h, a ; Data len
+    call ureadb : ld e, a : call ureadb : ld d, a ; Org
+    ld (TMP_CURRENT), hl, (TMP_CONTEXT), de
+
+    ;; size
+    rst #18
+    ld hl, TMP_CURRENT, a, d : or e : call nz, .save
+    ;; org
+    rst #18
+    ld hl, TMP_CONTEXT, a, d: or e : call nz, .save
+    
+    ld hl, (TMP_CURRENT), de, (TMP_CONTEXT)
+.loop
+    push hl, de
+    call ureadb
+    ld (de), a
+    pop de, hl
+    inc de : dec hl : ld a, l : or h : jr nz, .loop
+
+.exit
+    ei
+    jp (iy)
+.save
+    ld (hl), de
+    ret
+
+w_load:
+    FORTH_WORD "LOAD"
+    call justSkipName
+    call uart_init
+    ld e, GET_TAP_BLOCK_COMMAND : call uwrite
+    call ureadb : and a : jr z, .error
+    call getBlockTypeAndName : and a : jr nz, .error
+
+    ld e, 1 : call uwrite ; Send confirm byte 
+    di
+    ;; Loading vars
+
+    ld hl, TMP_DICT : call loadVar
+    ld hl, TMP_CURRENT 
+    dup 4
+    call loadVar 
+    edup 
+
+    call ureadb : ld l, a : call ureadb : ld h, a ; Data len
+    call ureadb : ld e, a : call ureadb : ld d, a ; Org
+    push hl
+    ld hl, (TMP_STKBOT)
+    ld bc, #0c : add hl, bc
+    ld (VAR_SPARE), hl
+    pop hl
+.loop
+    push hl, de
+    call ureadb : ld (de), a
+    pop de, hl
+    inc de
+    dec hl : ld a, h : or l : jr z, .exit
+    jp .loop
+    
+.exit
+    ld hl, TMP_CURRENT, de, VAR_CURRENT, bc, 8 : ldir ; moving vars 
+    ld hl, (TMP_DICT), (VAR_DICT), hl 
+    
+    ei
+    jp (iy)
+
+.error
+    ld e, 0 : call uwrite ; Send cancel byte
+    rst #20 : db #0a
+    ei 
+    jp (iy)
+
 w_ls:
     FORTH_WORD "LS"
     di

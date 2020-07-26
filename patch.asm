@@ -15,6 +15,10 @@ LINK = #1D58
     include "rom-modules/uart-dos.asm"
     DISPLAY "Bytes left: ", #3BFF - $
 
+;;;;;;;;;;;;;;;;;;;;;;; Dropout tape routines
+    org #1BA1
+    dw #166F ;; To list
+
 ;;;;;;;;;;;;;;;;;;;;;;; Dictionary hack place
     org #1ffd
     dw LINK
