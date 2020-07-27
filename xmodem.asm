@@ -4,8 +4,8 @@ DATA_PORT:	equ 0x81
 RESET:		equ 0x03	; Reset the serial device
 RTS_LOW:	equ 0x16 	; Clock div: +64, 8+1-bit
 RTS_HIGH:	equ 0x56	; Clock div: +64, 8+1-bit
-RECV_RETRY:	equ 0x0100	; Retry count for RECV op
-SEND_RETRY:	equ 0xbbbb	; Retry count for SEND op
+RECV_RETRY:	equ 0x0800	; Retry count for RECV op
+SEND_RETRY:	equ 0x0800	; Retry count for SEND op
 	
 	;; XMODEM protocol parameters
 XMODEM_SOH:	equ 0x01
@@ -306,12 +306,6 @@ GET_BLOCK_TO:
 CHECK_BLOCK:
 	ld a,(hl)		; Check first byte
 
-	push af
-	call PRINT_HEX
-	ld a, 0x20
-	rst 0x08
-	pop af
-	
 	cp XMODEM_EOT		; Check for end of transmission
 
 	ret z			; A contains EOT and carry reset
@@ -359,7 +353,7 @@ CHECK_BLOCK_LOOP:
 
 	;;  Discard any stale data in buffer
 DRAIN_SENDER:
-	call RECVW
+	call RECV
 	jr nc, DRAIN_SENDER	; Read whole packet
 
 	ret
@@ -448,6 +442,9 @@ FORTH_RECEIVE:
 	ld a, CR
 	rst 0x08
 
+	;; Drain any stale data
+	call DRAIN_SENDER
+	
 	;; Initialise packet number
 RECV_CONT_0:	
 	ld hl, 0x0000
@@ -489,11 +486,11 @@ RECV_LOOP:
 	pop af
 
 RECV_CONT_2:
-	push af
-	push bc
-	call DRAIN_SENDER	; Make sure no stale data
-	pop bc
-	pop af
+	;; push af
+	;; push bc
+	;; call DRAIN_SENDER	; Make sure no stale data
+	;; pop bc
+	;; pop af
 	
 	ld hl, PACKET_BUFFER	; Temp destination for packet
 	
@@ -533,6 +530,7 @@ RECV_CONT_4:
 
 	jr nc, RECV_CONT_5
 
+	call DRAIN_SENDER
 	ld a,(FLAGS)
 	bit 4,a
 	jr nz,RECV_TO
