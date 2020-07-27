@@ -442,6 +442,7 @@ FORTH_RECEIVE:
 	ld a, CR
 	rst 0x08
 
+	di 
 	;; Drain any stale data
 	call DRAIN_SENDER
 	
@@ -573,6 +574,8 @@ RECV_TO:
 	ld de, 0xFFFF		; Indicates failure
 	rst 0x10		; Push onto FORTH stack
 
+	ei
+	
 	jp (iy)
 
 RECV_DONE:
@@ -581,6 +584,8 @@ RECV_DONE:
 	
 	ld de, 0x0000		; Indicates success
 	rst 0x10
+
+	ei
 	
 	jp (iy)
 
