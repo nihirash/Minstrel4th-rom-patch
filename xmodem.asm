@@ -4,8 +4,8 @@ DATA_PORT:	equ 0x81
 RESET:		equ 0x03	; Reset the serial device
 RTS_LOW:	equ 0x16 	; Clock div: +64, 8+1-bit
 RTS_HIGH:	equ 0x56	; Clock div: +64, 8+1-bit
-RECV_RETRY:	equ 0x0800	; Retry count for RECV op
-SEND_RETRY:	equ 0x0800	; Retry count for SEND op
+RECV_RETRY:	equ 0x1000	; Retry count for RECV op
+SEND_RETRY:	equ 0x1000	; Retry count for SEND op
 	
 	;; XMODEM protocol parameters
 XMODEM_SOH:	equ 0x01
@@ -13,7 +13,10 @@ XMODEM_EOT:	equ 0x04
 XMODEM_ACK:	equ 0x06
 XMODEM_NAK:	equ 0x15
 XMODEM_BS:	equ 0x80
-XMODEM_MAX_RETRY:	equ 0x10
+XMODEM_MAX_RETRY:	equ 0x08
+
+ERROR_TO:	equ 0xF0
+ERROR_PE:	equ 0xF1
 	
 	;; Minstrel System Variables
 FLAGS:	equ 0x3c3e
@@ -264,96 +267,106 @@ PRINT_MSG:
 	;;
 	;; On entry:
 	;; 	a - initiation byte for retrieving packet (ACK/ NAK)
-	;;      hl - start of 132-byte buffer in which to hold packet
+	;;      de - destination address for payload of packet
 	;;
 	;; On exit
 	;; 	Carry reset 	- success
-	;; 	Carry set 	- timed out (B = 132 - bytes read)
+	;; 			- A=SOH / EOT
+	;;                      - L=packet number
+	;; 			- DE=one past last address written to
+	;; 	Carry set 	- failure
+	;; 			- B = 132 - bytes read
+	;; 			- A=error code
 	;; ========================================================
 GET_BLOCK:
-	call SENDW		; Transmit initiation code to sender
+	call SENDW		; Transmit initiation code to sender (corrupts AF and BC)
 
-	ld b, 0x84		; 132 bytes in XMODEM packet
-	ret c			; Return if initiation failed
+	;; Get header
+	call RECVW
+	jr c, GB_TO
+	
+	cp XMODEM_EOT		; Is it end-of-transmission?
+	ret z			; If so, done
 
-GET_BLOCK_LOOP:	
+	cp XMODEM_SOH		; Is it start-of-header
+	jr nz, GB_PE		; If not packet error
+
+	;; Read in packet number
+	call RECVW
+	jr c, GB_TO
+	
+	ld l,a			; Save it
+
+	;; Read complement
+	call RECVW
+	jr c, GB_TO
+
+	cpl			; Compute 255-A
+	cp l			; Compare to packet number
+	jr nz, GB_PE		; If not matching, packet error
+
+	;; Read payload
+	push de			; Save original value of DE
+	ld b, 0x80		; 128 bytes in XMODEM packet
+	ld c, 0			; Zero checksum
+GB_LOOP:	
 	push bc			; Save counter
-	call RECVW		; Read next byte
+	call RECVW		; Read next byte (corrupts AF and BC)
 	pop bc			; Retrieve counter
 
-	jr c, GET_BLOCK_TO	; Exit, if timed out
-	ld (hl),a		; Store byte read
-	inc hl			; Move to next address
-	djnz GET_BLOCK_LOOP	; Repeat if more data expected
+	jr nc, GB_SAVE_BYTE
+	pop de			; Restore start address of block
+	jr GB_TO		; Exit, if timed out
 
+GB_SAVE_BYTE:	
+	ld (de),a		; Store byte read
+	inc de			; Move to next address
+	add a, c		; Update checksum
+	ld c,a
+	
+	djnz GB_LOOP		; Repeat if more data expected
+
+	;; Get checksum
+	inc sp			; Discard old value of DE
+	inc sp
+	
+	push bc			; Save checksum
+	call RECVW		; Retrieve sender copy of checksum
+	pop bc			; Retrieve checksum
+
+	jr c, GB_TO
+
+	cp c			; Compare to computed checksum
+
+	jr nz, GB_PE		; Packet error if no match
+	
+	;; Done
+	ld a, XMODEM_SOH	; Indicates full packet read
 	and a			; Reset carry flag
+	
 	ret
 	
-GET_BLOCK_TO:
+GB_TO:
+	ld A, ERROR_TO		; Indicates timout
 	scf			; Indicate error
 	ret
 
-	;; Check that packet in memory is valid XMODEM packet
+GB_PE:
+	ld A, ERROR_PE		; Indicates packet error
+	scf
+	ret
+
+	;; ========================================================
+	;; Discard any stale data in buffer
 	;;
-	;; On entry:
-	;;     HL - address of start of packet
+	;; On entry
+	;;   --
 	;;
 	;; On exit
-	;;   Carry flag reset - valid packet
-	;;     A = SOH, E = packet number, or
-	;;     A = EOT - EOT received
-	;;   Carry flag set - invalid packet
-CHECK_BLOCK:
-	ld a,(hl)		; Check first byte
-
-	cp XMODEM_EOT		; Check for end of transmission
-
-	ret z			; A contains EOT and carry reset
-
-	cp XMODEM_SOH
-
-	jr z, CHECK_BLOCK_CONT_01
-
-	scf			; Indicates invalid packet
-	ret
-
-CHECK_BLOCK_CONT_01:
-	inc hl			; Check packet number
-	ld e,(hl)
-	
-	inc hl
-	ld a,(hl)
-
-	cpl			; Calculate 255-a
-	cp e			; Should be same
-
-	jr z, CHECK_BLOCK_CONT_02
-
-	scf			; Indicates invalid packet
-	ret
-
-CHECK_BLOCK_CONT_02:
-	ld bc,0x8000		; B=128 bytes; C=checksum 0
-
-CHECK_BLOCK_LOOP:	
-	inc hl
-	ld a,(hl)		; Read byte
-	add a,c			; Update checksum
-	ld c,a
-	djnz CHECK_BLOCK_LOOP
-
-	inc hl
-	ld a,(hl)		; Read checksum from packet
-	cp c			; Check it is consistent
-
-	ret z			; Carry flag reset
-
-	scf			; Indicates invalid packet
-	ret
-
-	;;  Discard any stale data in buffer
+	;;   A and BC corrupt
+	;; ========================================================
 DRAIN_SENDER:
-	call RECV
+	call RECVW
 	jr nc, DRAIN_SENDER	; Read whole packet
 
 	ret
@@ -442,12 +455,12 @@ FORTH_RECEIVE:
 	ld a, CR
 	rst 0x08
 
+RECV_CONT_0:	
 	di 
 	;; Drain any stale data
-	call DRAIN_SENDER
+	call DRAIN_SENDER	; Corrupts A
 	
 	;; Initialise packet number
-RECV_CONT_0:	
 	ld hl, 0x0000
 	ld (CURR_PACKET),hl
 	
@@ -487,29 +500,19 @@ RECV_LOOP:
 	pop af
 
 RECV_CONT_2:
-	;; push af
-	;; push bc
-	;; call DRAIN_SENDER	; Make sure no stale data
-	;; pop bc
-	;; pop af
-	
-	ld hl, PACKET_BUFFER	; Temp destination for packet
-	
 	push bc
 	call GET_BLOCK 
 	pop bc
 
-	jr nc, RECV_CONT_4
+	jr nc, RECV_CONT_4	; Skip forward if successful
 	
-	;; Check for EOT
-	ld a,(PACKET_BUFFER)
-	cp XMODEM_EOT
-	jr z, RECV_DONE
+	cp ERROR_PE		; Check for Packet Error
+	jr z, RECV_PE		; Jump forward if so,
 
-	;; Otherwise is a receive error
+RECV_TO:	
 	ld a,(FLAGS)
 	bit 4,a
-	jr nz,RECV_TO
+	jr nz,RECV_ERR
 
 	;; Log receive
 	ld hl,NORMSG
@@ -518,23 +521,12 @@ RECV_CONT_2:
 	ld a, CR
 	rst 0x08
 	
-	jr RECV_TO
-
-RECV_CONT_4:	
-	ld hl, PACKET_BUFFER
-	push bc
-	push de
-	call CHECK_BLOCK
-	ld l,e			; Save packet number
-	pop de			; Retrieve destination addr
-	pop bc
-
-	jr nc, RECV_CONT_5
-
-	call DRAIN_SENDER
+	jr RECV_ERR
+	
+RECV_PE:	
 	ld a,(FLAGS)
 	bit 4,a
-	jr nz,RECV_TO
+	jr nz,RECV_ERR
 
 	;; Log receive
 	ld hl,PCKMSG
@@ -543,30 +535,27 @@ RECV_CONT_4:
 	ld a, CR
 	rst 0x08
 	
-	jr RECV_TO
+	jr RECV_ERR
+
+RECV_WP:	
+	ld a,(FLAGS)
+	bit 4,a
+	jr nz,RECV_ERR
+
+	;; Log receive
+	ld hl,NOPMSG
+	call PRINT_MSG
 	
-RECV_CONT_5:	
-	;; Check for EOT (value in A)
-	cp XMODEM_EOT
-	jr z, RECV_DONE
-
-	;; Check is correct packet
-	ld a,(CURR_PACKET)
-	cp l
-
-	jr nz, RECV_TO
-
-	;; Packet good, so transfer into memory (DE set already)
-	ld hl, PACKET_BUFFER + 3
-	ld bc, 0x0080
-	ldir
-
-	;; Confirm packet received
-	ld a, XMODEM_ACK
-
-	jp RECV_NEXT_PACKET
-
-RECV_TO:
+	ld a, CR
+	rst 0x08
+	
+	;; jr RECV_ERR
+	
+RECV_ERR:
+	push bc
+	call DRAIN_SENDER
+	pop bc
+	
 	ld a, XMODEM_NAK
 	djnz RECV_LOOP		; If not max retry, try again
 
@@ -577,6 +566,22 @@ RECV_TO:
 	ei
 	
 	jp (iy)
+
+RECV_CONT_4:	
+	;; Check for EOT
+	cp XMODEM_EOT
+	jr z, RECV_DONE
+	
+	;; Check is correct packet
+	ld a,(CURR_PACKET)
+	cp l
+
+	jr nz, RECV_WP
+
+	;; Confirm packet received
+	ld a, XMODEM_ACK
+
+	jp RECV_NEXT_PACKET
 
 RECV_DONE:
 	ld a,XMODEM_ACK		; Acknowledge receipt
@@ -589,37 +594,6 @@ RECV_DONE:
 	
 	jp (iy)
 
-
-REC_TEST:
-	call DRAIN_SENDER
-
-	rst 0x18		; Retrieve acknowledge string
-	ld a,e
-	
-	rst 0x18
-	ld h,d
-	ld l,e
-	
-	ld hl, PACKET_BUFFER
-	
-	call GET_BLOCK
-
-	jr c, REC_ERR
-
-	ld hl, PACKET_BUFFER
-
-	call CHECK_BLOCK
-	
-	jr c, REC_ERR
-
-	ld d,0
-	rst 0x10
-	jp (iy)
-	
-REC_ERR:	
-	ld de, 0xffff
-	rst 0x10
-	jp (iy)
 	
 	;; ========================================================
 	;; Send a block of memory via serial interface, using XMODEM
@@ -793,6 +767,7 @@ EOTMSG:	db "EOT RECEIVED", 0x00
 SOHMSG:	db "SOH RECEIVED", 0x00
 NORMSG:	db "NO RESPONSE", 0x00
 PCKMSG:	db "PACKET ERROR", 0x00
+NOPMSG:	db "WRONG PACKET", 0X00
 	
 	;; ========================================================
 	;; Workspace

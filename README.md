@@ -37,16 +37,31 @@ Current version is intended to be loaded into memory at address 0xF000, using co
 
 `F000 0 BLOAD xmodem ( LOAD M/CODE )`
 
-Only transmit operation is currently implement (no receive operation). To use, type a sequence something like:
+Both transmit and receive operations are implemented, via machine-code calls with required parameters on the stack, as follows:
 
-`57 80 OUT 16 80 OUT ( INITIALISE SERIAL CARD ( HEX VALUES ) )`
+- Reset card: `F0E8 CALL`
 
-`<start> <length> F0D1 CALL ( TRANSMIT )`
+- Receive data `<start add> F10E CALL`
 
-On exit, stack contains value to indicate outcome: '0' for success; '-1' for failure (timeout). Routine will also display progress on-screen, unless INVIS is enabled to surpress screen output.
+- Send data `<start addr> <legngth> F1B6 CALL`
 
-Current version has some deviations from the standard. First, it will pad the transfer size to the next 128-byte boundary, without putting in padding. For example, if you run the command:
+For send and receive, on exit, stack contains value to indicate outcome: '0' for success; '-1' for failure (timeout). Routine will also display progress on-screen, unless INVIS is enabled to surpress screen output.
 
-`0000 10 F0BB call`
+### Notes
+
+Current version of send routine has some deviations from the standard in that it will pad the transfer size to the next 128-byte boundary, without putting in padding. For example, if you run the command:
+
+`0000 10 F10E CALL`
 
 --the routine will transfer the first 128 bytes of memory, rather than the first 16 plus 112 bytes of padding.
+
+Received data is written directly to memory. If receive routine fails mid-way through transfer, there will be a partially complete copy of the transfer in memory. 
+
+### Known issues
+
+- Routines should be created a proper FORTH words.
+
+- Screen logging for receive operation will report receiving one more packet than you might expect. The EOT at the end of the transfer is counted as a packet, which might confuse the user.
+
+- Transfer routines require a small amount of RAM to hold temporary variables. It would be better to reuse existing Minstrel system variables, to make it easier to move the routines into ROM.
+
