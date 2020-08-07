@@ -9,3 +9,4 @@ devserver/filesystem/*
 *.asm~
 *.xmodem~
 *.md~
+Makefile~

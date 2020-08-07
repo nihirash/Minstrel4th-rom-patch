@@ -6,15 +6,33 @@ LINK = #1D58
 
 ;;;;;;;;;;;;;;;;;;;;;;; Original ROM section
     device zxspectrum48 // Only for using SAVEBIN
-    org #0
-    incbin "minstrel.rom"
 
+    IFDEF INRAM
+    OUTPUT "serialtools.bin"
+    ENDIF
+	
+    IFNDEF INRAM
+      org #0
+      incbin "minstrel.rom"
+    ENDIF
+	
 ;;;;;;;;;;;;;;;;;;;;;;; Additional ROM section
-    org #2800
+        IFDEF INRAM
+        org 0x3c51			; Immediately follows defn of FORTH
+        ELSE
+        org #2800
+        ENDIF
+
     include "rom-modules/common-uart-ops.asm"
     include "rom-modules/uart-dos.asm"
-    DISPLAY "Bytes left: ", #3BFF - $
+    IFDEF INRAM
+      DISPLAY "Set STACKBOT to be", end
+      DISPLAY "Set 0x3C4C to be", w_ubget + 9
 
+      OUTEND
+    ELSE
+      DISPLAY "Bytes left: ", #3BFF - $
+	
 ;;;;;;;;;;;;;;;;;;;;;;; Dropout tape routines
     org #1BA1
     dw #166F ;; To list
@@ -24,3 +42,5 @@ LINK = #1D58
     dw LINK
 ;;;;;;;;;;;;;;;;;;;;;;; Export binary file
     savebin "patched.rom", 0, 16384
+    ENDIF
+

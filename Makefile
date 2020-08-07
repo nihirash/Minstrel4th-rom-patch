@@ -1,5 +1,5 @@
 ASM = sjasmplus
-AFLAGS = --sym=rom.sym
+AFLAGS = --sym=rom.sym -DINRAM
 
 ifeq ($(OS),Windows_NT)
 	ERASE = erase
@@ -22,7 +22,7 @@ flash: toflash.rom
 toflash.rom: patched.rom
 		$(MERGECMD)
 
-$(OBJS): $(SRC) minstrel.rom
+$(OBJS): $(SRC) minstrel.rom Makefile
 		$(ASM) $(AFLAGS) patch.asm
 		
 clean:
