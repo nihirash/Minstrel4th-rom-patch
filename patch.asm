@@ -17,14 +17,15 @@ LINK = #1D58
     ENDIF
 	
 ;;;;;;;;;;;;;;;;;;;;;;; Additional ROM section
-        IFDEF INRAM
-        org 0x3c51			; Immediately follows defn of FORTH
-        ELSE
-        org #2800
-        ENDIF
+    IFDEF INRAM
+    org 0x3c51			; Immediately follows defn of FORTH
+    ELSE
+    org #2800
+    ENDIF
 
     include "rom-modules/common-uart-ops.asm"
     include "rom-modules/uart-dos.asm"
+	
     IFDEF INRAM
       DISPLAY "Set STACKBOT to be", end
       DISPLAY "Set 0x3C4C to be", w_ubget + 9
@@ -34,13 +35,13 @@ LINK = #1D58
       DISPLAY "Bytes left: ", #3BFF - $
 	
 ;;;;;;;;;;;;;;;;;;;;;;; Dropout tape routines
-    org #1BA1
-    dw #166F ;; To list
+      org #1BA1
+      dw #166F ;; To list
 
 ;;;;;;;;;;;;;;;;;;;;;;; Dictionary hack place
-    org #1ffd
-    dw LINK
+      org #1ffd
+      dw LINK
 ;;;;;;;;;;;;;;;;;;;;;;; Export binary file
-    savebin "patched.rom", 0, 16384
+      savebin "patched.rom", 0, 16384
     ENDIF
 
