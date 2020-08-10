@@ -159,13 +159,21 @@ hw_store_data: ; Hidden word
     jp (iy)
 
 w_bsave:
+    IFDEF INRAM
+    FORTH_WORD_ADDR "BSAVES", FORTH_MODE
+    ELSE
     FORTH_WORD_ADDR "BSAVE", FORTH_MODE
+    ENDIF
     dw F_PREPARE_BSAVE_HEADER  
     dw hw_store_data
     dw F_EXIT
     
 w_save:
+    IFDEF INRAM
+    FORTH_WORD_ADDR "SAVES", FORTH_MODE
+    ELSE
     FORTH_WORD_ADDR "SAVE", FORTH_MODE
+    ENDIF
     dw F_WORD_TO_PAD              
     dw hw_store_data
     dw F_EXIT
@@ -194,7 +202,11 @@ w_tapin:
     jp (iy)
 
 w_bload:
-    FORTH_WORD "BLOAD"
+    IFDEF INRAM
+    FORTH_WORD_ADDR "BLOADS", FORTH_MODE
+    ELSE
+    FORTH_WORD_ADDR "BLOAD", FORTH_MODE
+    ENDIF
     di
     call justSkipName
     call uart_init
@@ -236,7 +248,11 @@ w_bload:
     ret
 
 w_load:
-    FORTH_WORD "LOAD"
+    IFDEF INRAM
+    FORTH_WORD_ADDR "LOADS", FORTH_MODE
+    ELSE
+    FORTH_WORD_ADDR "LOAD", FORTH_MODE
+    ENDIF
     call justSkipName
     call uart_init
     ld e, GET_TAP_BLOCK_COMMAND : call uwrite

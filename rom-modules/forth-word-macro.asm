@@ -20,18 +20,32 @@
 
     MACRO FORTH_WORD wordname
 .name
+	DEFINE _WORDNAME wordname
         ABYTEC 0 wordname
 .name_end
+	IFDEF INRAM
+	;; LUA ALLPASS
+	;; sj.insert_label( sj.get_define(_WORDNAME), sj.current_address )
+	;; ENDLUA
+	dw 0x0000
+	ENDIF
         dw LINK
         SET_VAR LINK, $
         db .name_end - .name
         dw $ + 2
+	UNDEFINE _WORDNAME
     ENDM
 
     MACRO FORTH_WORD_ADDR wordname, addr
 .name
         ABYTEC 0 wordname
 .name_end
+	IFDEF INRAM
+	;; LUA ALLPASS
+	;; sj.insert_label( sj.get_define(_WORDNAME), sj.current_address )
+	;; ENDLUA
+	dw 0x0000
+	ENDIF
         dw LINK
         SET_VAR LINK, $
         db .name_end - .name

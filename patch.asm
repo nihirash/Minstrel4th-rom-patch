@@ -1,6 +1,11 @@
 ;
 ; This is skeleton for Minstrel 4th ROM patch
+  IFDEF INRAM
+LINK = #3c49
+  ELSE
 LINK = #1D58
+  ENDIF
+  
 ;;;;;;;;;;;;;;;;;;;;;;; Global macros section
     include "rom-modules/forth-word-macro.asm"
 
@@ -27,7 +32,7 @@ LINK = #1D58
     include "rom-modules/uart-dos.asm"
 	
     IFDEF INRAM
-      DISPLAY "Set STACKBOT to be", end
+      DISPLAY "Set STACKBOT (0x3C37) to be", end
       DISPLAY "Set 0x3C4C to be", w_ubget + 9
 
       OUTEND
