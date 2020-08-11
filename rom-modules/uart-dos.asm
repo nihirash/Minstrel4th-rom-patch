@@ -167,7 +167,8 @@ w_bsave:
     dw F_PREPARE_BSAVE_HEADER  
     dw hw_store_data
     dw F_EXIT
-    
+.word_end
+	
 w_save:
     IFDEF INRAM
     FORTH_WORD_ADDR "SAVES", FORTH_MODE
@@ -177,6 +178,7 @@ w_save:
     dw F_WORD_TO_PAD              
     dw hw_store_data
     dw F_EXIT
+.word_end
 
 w_tapout:
     FORTH_WORD "TAPOUT"
@@ -184,6 +186,7 @@ w_tapout:
     call uart_init
     ld e, TAP_OUT_COMMAND : call uwrite
     jr w_tapin.common
+.word_end
 
 w_tapin:
     FORTH_WORD "TAPIN"
@@ -200,6 +203,7 @@ w_tapin:
     ld e, 0 : call uwrite
     rst #20 : db #0a
     jp (iy)
+.word_end
 
 w_bload:
     IFDEF INRAM
@@ -246,6 +250,7 @@ w_bload:
 .save
     ld (hl), de
     ret
+.word_end
 
 w_load:
     IFDEF INRAM
@@ -296,6 +301,7 @@ w_load:
     rst #20 : db #0a
     ei 
     jp (iy)
+.word_end
 
 w_ls:
     FORTH_WORD "LS"
@@ -312,6 +318,7 @@ w_ls:
     ld a, 13 : rst #08
     ei 
     jp (iy)
+.word_end
 
 w_ubput:
     FORTH_WORD "UBPUT"
@@ -344,6 +351,7 @@ w_ubput:
     ei
     rst #20 : db #0a
     jp (iy)
+.word_end
 
 w_ubget:
     FORTH_WORD "UBGET"
@@ -372,4 +380,5 @@ w_ubget:
     ei 
     rst #20 : db #0a
     jp (iy)
+.word_end
 end:	
