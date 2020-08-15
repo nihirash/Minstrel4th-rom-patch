@@ -22,6 +22,8 @@ Current supported operations:
  * tapout - select tape image for storing. If file exists - new files will be appended.
  * load/bload works like with tape but with image. Optionally you can skip file name, for example: `tapin tetris.tap load` and `tapin tetris.tap load tetris` makes same result.
  * save/bsave works in pure way as on original ROM but saves to TAP-file
+ * uxput - upload block of memory using XMODEM protocol. Syntax is `ADDRESS SIZE xbput`. On exit, TOS contains 0, if transfer succeeded and -1 otherwise.
+ * uxget - download block of memory using XMODEM protocol. Syntax is `ADDRESS xbget`. On exit, TOS contains 0, if transfer succeeded and -1 otherwise.
 
 ## Version of patch that can be loaded into RAM
 
