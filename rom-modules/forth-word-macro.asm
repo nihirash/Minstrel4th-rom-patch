@@ -33,7 +33,6 @@
 
     MACRO FORTH_WORD_ADDR wordname, addr
 .name
-	DEFINE _WORDNAME wordname
         ABYTEC 0 wordname
 .name_end
 	IFDEF INRAM
@@ -43,5 +42,4 @@
         SET_VAR LINK, $
         db .name_end - .name
         dw addr
-	UNDEFINE _WORDNAME
     ENDM

@@ -30,6 +30,17 @@ VAR_STKBOT = #3C37
 VAR_DICT = #3C4C ;; ACTUAL
 VAR_SPARE = #3C3B
 
+    IFDEF INRAM
+.name
+        ABYTEC 0 "UARTDOS"
+.name_end
+        dw UART_DOS_END - .name_end
+        dw LINK
+        SET_VAR LINK, $
+        db .name_end - .name
+        dw 0x0fec
+    ENDIF
+
 ;;;;;;;;;;;;;;;;;;;;;;; Assembly routines
 
 printZ:
@@ -158,23 +169,19 @@ hw_store_data: ; Hidden word
     call storeBlock
     jp (iy)
 
-w_bsave:
     IFDEF INRAM
-    FORTH_WORD_ADDR "BSAVES", FORTH_MODE
-    ELSE
-    FORTH_WORD_ADDR "BSAVE", FORTH_MODE
+UART_DOS_END:
     ENDIF
+
+w_bsave:
+    FORTH_WORD_ADDR "UBSAVE", FORTH_MODE
     dw F_PREPARE_BSAVE_HEADER  
     dw hw_store_data
     dw F_EXIT
 .word_end
 	
 w_save:
-    IFDEF INRAM
-    FORTH_WORD_ADDR "SAVES", FORTH_MODE
-    ELSE
-    FORTH_WORD_ADDR "SAVE", FORTH_MODE
-    ENDIF
+    FORTH_WORD_ADDR "USAVE", FORTH_MODE
     dw F_WORD_TO_PAD              
     dw hw_store_data
     dw F_EXIT
@@ -206,11 +213,7 @@ w_tapin:
 .word_end
 
 w_bload:
-    IFDEF INRAM
-    FORTH_WORD_ADDR "BLOADS", FORTH_MODE
-    ELSE
-    FORTH_WORD_ADDR "BLOAD", FORTH_MODE
-    ENDIF
+    FORTH_WORD_ADDR "UBLOAD", FORTH_MODE
     di
     call justSkipName
     call uart_init
@@ -253,11 +256,7 @@ w_bload:
 .word_end
 
 w_load:
-    IFDEF INRAM
-    FORTH_WORD_ADDR "LOADS", FORTH_MODE
-    ELSE
-    FORTH_WORD_ADDR "LOAD", FORTH_MODE
-    ENDIF
+    FORTH_WORD_ADDR "ULOAD", FORTH_MODE
     call justSkipName
     call uart_init
     ld e, GET_TAP_BLOCK_COMMAND : call uwrite
@@ -381,4 +380,5 @@ w_ubget:
     rst #20 : db #0a
     jp (iy)
 .word_end
+
 end:	

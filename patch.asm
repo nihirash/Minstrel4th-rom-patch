@@ -32,9 +32,12 @@ LINK = #1D58
     include "rom-modules/uart-dos.asm"
 	
     IFDEF INRAM
-      DISPLAY "Set STACKBOT (0x3C37) to be", end
-      DISPLAY "Set 0x3C4C to be", w_ubget + 9
-
+      DISPLAY "1. Set SPARE (0x3C3B) to be ", end + 0x0c
+      DISPLAY "2. Set STACKBOT (0x3C37) to be ", end
+      DISPLAY "3. Load code block to 0x3C51"	
+      DISPLAY "4. Set 0x3C4C to be ", w_ubget + 0x09
+      DISPLAY "5. Set DICT (0x3C39) to be ", w_ubget + 0x05
+      DISPLAY "6. Set ", w_ubget + 0x05, " to be 0x0000"
       OUTEND
     ELSE
       DISPLAY "Bytes left: ", #3BFF - $
