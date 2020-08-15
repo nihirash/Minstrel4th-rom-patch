@@ -23,6 +23,24 @@ Current supported operations:
  * load/bload works like with tape but with image. Optionally you can skip file name, for example: `tapin tetris.tap load` and `tapin tetris.tap load tetris` makes same result.
  * save/bsave works in pure way as on original ROM but saves to TAP-file
 
+## Version of patch that can be loaded into RAM
+
+By defining INRAM variable in Makefile, you can instruct 'make' to build a version of the patch suitable for loading into RAM (in a freshly booted Minstrel). The process for loading the extra words is a bit convoluted, though the output of make will explain the key steps. They are, as follows (for correct values, check make ouput):
+
+1. `3FF7 3C3B ! ( MOVE STACK UP IN MEMORY ) `
+
+2. `3FEB 3C37 ! ( MOVE END OF DICTIONARY POINTER ) `
+
+3. `3C51 0 BLOAD SERIALB ( LOAD EXTRA WORDS )`
+
+4. `3FB8 3C4C ! ( UPDATE FORTH VOCAB TO POINT TO NEWEST WORD ) `
+
+5. `3FB4 3C39 ! ( UPDATE DICT TO POINT TO LENGTH FIELD ON NEWEST WORD ) `
+
+6. `0 3FB4 ! ( SET LENGTH FIELD OF NEWEST WORD TO 0 )`
+
+The ULOAD command cannot be used with RAM version of patch file, as it will overwrite the patch file.
+
 ## XMODEM
 
 Implementation of XMODEM protocol for Minstrel 4th, using the Tynemouth Software 6850 serial port for RC2014.
