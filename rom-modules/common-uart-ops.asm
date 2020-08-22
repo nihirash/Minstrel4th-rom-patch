@@ -86,3 +86,11 @@ w_uinit:
     call uart_init
     jp (iy)
 .word_end
+
+w_hex:
+    FORTH_WORD "HEX"
+    ld (IX + 0x3F), 0x10
+    jp (iy)	
+.word_end:
+	
+	
