@@ -1,6 +1,5 @@
 ASM = sjasmplus
-AFLAGS = --sym=rom.sym
-# -DINRAM
+AFLAGS = --sym=rom.sym # -DINRAM
 
 ifeq ($(OS),Windows_NT)
 	ERASE = erase
