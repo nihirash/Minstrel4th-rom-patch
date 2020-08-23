@@ -213,7 +213,7 @@ w_tapin:
 .word_end
 
 w_bload:
-    FORTH_WORD_ADDR "UBLOAD", FORTH_MODE
+    FORTH_WORD "UBLOAD"
     di
     call justSkipName
     call uart_init
@@ -256,7 +256,7 @@ w_bload:
 .word_end
 
 w_load:
-    FORTH_WORD_ADDR "ULOAD", FORTH_MODE
+    FORTH_WORD "ULOAD"
     call justSkipName
     call uart_init
     ld e, GET_TAP_BLOCK_COMMAND : call uwrite
