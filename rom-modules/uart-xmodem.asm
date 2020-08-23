@@ -37,7 +37,7 @@ CURR_PACKET: 	equ 0x2702	; Temporary story for packet number
         SET_VAR LINK, $		; Update link for next word
         db .name_end - .name	; Name-length
         dw 0x0fec		; Indicates a CREATE word
-
+    ENDIF
 	
 	;; ========================================================
 	;; (Part-blocking) receive byte from serial port
@@ -436,6 +436,7 @@ DRAIN_SENDER:
 
 	ret
 
+    IFDEF INRAM
 	;;  End of library word
 XMODEM_END:
     ENDIF
