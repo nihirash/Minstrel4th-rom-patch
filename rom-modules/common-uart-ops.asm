@@ -4,17 +4,6 @@ CONTROL_REG = 128
 RTS_LOW = #16
 RTS_HIGH = #56
 
-    IFDEF INRAM
-.name
-        ABYTEC 0 "UARTOPS"
-.name_end
-        dw UART_OPS_END - .name_end
-        dw LINK
-        SET_VAR LINK, $
-        db .name_end - .name
-        dw 0x0fec
-    ENDIF
-    
 ; Resets UART buffers and set 115200 8N1 with RTS high(deny to send)
 uart_init:
     ld a, 3, c, CONTROL_REG : out (c), a
@@ -50,10 +39,6 @@ uwrite:
     ret
 
 ;;;;;;;;;;;;;;;;;;;;;;; Words section
-
-    IFDEF INRAM
-UART_OPS_END:
-    ENDIF
 
 w_uwrite:
     FORTH_WORD "UWRITE"

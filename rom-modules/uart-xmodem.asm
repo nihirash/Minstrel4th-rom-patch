@@ -25,20 +25,6 @@ LAST_PACKET: 	equ 0x2701	; Temporary store for length of last
 CURR_PACKET: 	equ 0x2702	; Temporary story for packet number
 				; in PAD (2 bytes)
 	
-    IFDEF INRAM
-	;; ========================================================
-	;; FORTH header for library routines
-	;; ========================================================
-.name:
-        ABYTEC 0 "XMODEM"	; Name field
-.name_end:
-        dw XMODEM_END - .name_end ; Length field
-        dw LINK			; Link field
-        SET_VAR LINK, $		; Update link for next word
-        db .name_end - .name	; Name-length
-        dw 0x0fec		; Indicates a CREATE word
-    ENDIF
-	
 	;; ========================================================
 	;; (Part-blocking) receive byte from serial port
 	;;
@@ -435,11 +421,6 @@ DRAIN_SENDER:
 	jr nc, DRAIN_SENDER	; Repeat, if data read
 
 	ret
-
-    IFDEF INRAM
-	;;  End of library word
-XMODEM_END:
-    ENDIF
 
 	;; ========================================================
 	;; Enable echoing of screen output to serial device.

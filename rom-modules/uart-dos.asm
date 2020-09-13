@@ -8,7 +8,7 @@ TAP_IN_COMMAND = 'T'
 TAP_OUT_COMMAND = 't'
 
 ;;;;;;;;;;;;;;;;;;;;;;; Forth's words used
-F_WORD_TO_PAD = #1A10
+F_WORD_TO_PAD = #1A10          ; 
 F_PREPARE_BSAVE_HEADER = #1A3D
 F_EXIT = #04B6 
 
@@ -29,17 +29,6 @@ VAR_VOCLNK = #3C35
 VAR_STKBOT = #3C37
 VAR_DICT = #3C4C ;; ACTUAL
 VAR_SPARE = #3C3B
-
-    IFDEF INRAM
-.name
-        ABYTEC 0 "UARTDOS"
-.name_end
-        dw UART_DOS_END - .name_end
-        dw LINK
-        SET_VAR LINK, $
-        db .name_end - .name
-        dw 0x0fec
-    ENDIF
 
 ;;;;;;;;;;;;;;;;;;;;;;; Assembly routines
 
@@ -153,9 +142,22 @@ storeBlock:
     rst #20 : db #0a
     ret
 
+w_code:
+.name:  ABYTEC 0 "CODE"
+.name_end:
+	dw LINK                 ; Link field 
+	SET_VAR LINK, $         
+	db .name_end - .name    ; Name-length field
+	dw 0x1085               ; Code field
+	dw .entry               ; Parameter field
+	db 0xe8, 0x10, 0xf0, 0xff
+.entry:	db 0xcd, 0xf0, 0x0f
+	db 0xa7, 0x10
+	db 0xb6, 0x04
+.word_end:
+
 ;;;;;;;;;;;;;;;;;;;;;;; Words section
 hw_store_data: ; Hidden word
-    dw .code
 .code
     call uart_init
     ld a, (#2302) ; length of word in pad
@@ -168,20 +170,17 @@ hw_store_data: ; Hidden word
     ld hl, (#230e)
     call storeBlock
     jp (iy)
-
-    IFDEF INRAM
-UART_DOS_END:
-    ENDIF
+.word_end
 
 w_bsave:
-    FORTH_WORD_ADDR "UBSAVE", FORTH_MODE
+    FORTH_WORD_ADDR "BSAVE", FORTH_MODE
     dw F_PREPARE_BSAVE_HEADER  
     dw hw_store_data
     dw F_EXIT
 .word_end
 	
 w_save:
-    FORTH_WORD_ADDR "USAVE", FORTH_MODE
+    FORTH_WORD_ADDR "SAVE", FORTH_MODE
     dw F_WORD_TO_PAD              
     dw hw_store_data
     dw F_EXIT
@@ -213,7 +212,7 @@ w_tapin:
 .word_end
 
 w_bload:
-    FORTH_WORD "UBLOAD"
+    FORTH_WORD "BLOAD"
     di
     call justSkipName
     call uart_init
@@ -256,7 +255,7 @@ w_bload:
 .word_end
 
 w_load:
-    FORTH_WORD "ULOAD"
+    FORTH_WORD "LOAD"
     call justSkipName
     call uart_init
     ld e, GET_TAP_BLOCK_COMMAND : call uwrite

@@ -10,3 +10,4 @@ devserver/filesystem/*
 *.xmodem~
 *.md~
 Makefile~
+*.py~
