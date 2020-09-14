@@ -158,10 +158,11 @@ w_code:
 
 ;;;;;;;;;;;;;;;;;;;;;;; Words section
 hw_store_data: ; Hidden word
+    dw .code
 .code
     call uart_init
-    ld a, (#2302) ; length of word in pad
-    and a : jp z, #1AB6 ; Tape error
+    ld a, (#2302)               ; length of word in pad
+    and a : jp z, #1AB6         ; Tape error
     ld hl, (#230c), a, h  : or l : jp z, #1AB6
     push hl
     ld de, #19, hl, #2301
