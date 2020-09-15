@@ -45,16 +45,14 @@ w_uwrite:
     rst #18
     call uwrite
     jp (iy)
-.word_end
-	
+
 w_ureads:
     FORTH_WORD "UREADS"
     call ureadb
     ld d, 0, e, a
     rst #10
     jp (iy)
-.word_end
-	
+
 w_uread:
     FORTH_WORD "UREAD"
     ld de, #ffff
@@ -64,18 +62,8 @@ w_uread:
 .fine
     rst #10
     jp (iy)
-.word_end
 
 w_uinit:
     FORTH_WORD "UINIT"
     call uart_init
     jp (iy)
-.word_end
-
-w_hex:
-    FORTH_WORD "HEX"
-    ld (IX + 0x3F), 0x10
-    jp (iy)	
-.word_end:
-	
-	

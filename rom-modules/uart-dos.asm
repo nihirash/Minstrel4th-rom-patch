@@ -8,7 +8,7 @@ TAP_IN_COMMAND = 'T'
 TAP_OUT_COMMAND = 't'
 
 ;;;;;;;;;;;;;;;;;;;;;;; Forth's words used
-F_WORD_TO_PAD = #1A10          ; 
+F_WORD_TO_PAD = #1A10
 F_PREPARE_BSAVE_HEADER = #1A3D
 F_EXIT = #04B6 
 
@@ -142,27 +142,13 @@ storeBlock:
     rst #20 : db #0a
     ret
 
-w_code:
-.name:  ABYTEC 0 "CODE"
-.name_end:
-	dw LINK                 ; Link field 
-	SET_VAR LINK, $         
-	db .name_end - .name    ; Name-length field
-	dw 0x1085               ; Code field
-	dw .entry               ; Parameter field
-	db 0xe8, 0x10, 0xf0, 0xff
-.entry:	db 0xcd, 0xf0, 0x0f
-	db 0xa7, 0x10
-	db 0xb6, 0x04
-.word_end:
-
 ;;;;;;;;;;;;;;;;;;;;;;; Words section
 hw_store_data: ; Hidden word
     dw .code
 .code
     call uart_init
-    ld a, (#2302)               ; length of word in pad
-    and a : jp z, #1AB6         ; Tape error
+    ld a, (#2302) ; length of word in pad
+    and a : jp z, #1AB6 ; Tape error
     ld hl, (#230c), a, h  : or l : jp z, #1AB6
     push hl
     ld de, #19, hl, #2301
@@ -171,21 +157,18 @@ hw_store_data: ; Hidden word
     ld hl, (#230e)
     call storeBlock
     jp (iy)
-.word_end
 
 w_bsave:
     FORTH_WORD_ADDR "BSAVE", FORTH_MODE
     dw F_PREPARE_BSAVE_HEADER  
     dw hw_store_data
     dw F_EXIT
-.word_end
-	
+    
 w_save:
     FORTH_WORD_ADDR "SAVE", FORTH_MODE
     dw F_WORD_TO_PAD              
     dw hw_store_data
     dw F_EXIT
-.word_end
 
 w_tapout:
     FORTH_WORD "TAPOUT"
@@ -193,7 +176,6 @@ w_tapout:
     call uart_init
     ld e, TAP_OUT_COMMAND : call uwrite
     jr w_tapin.common
-.word_end
 
 w_tapin:
     FORTH_WORD "TAPIN"
@@ -210,7 +192,6 @@ w_tapin:
     ld e, 0 : call uwrite
     rst #20 : db #0a
     jp (iy)
-.word_end
 
 w_bload:
     FORTH_WORD "BLOAD"
@@ -253,7 +234,6 @@ w_bload:
 .save
     ld (hl), de
     ret
-.word_end
 
 w_load:
     FORTH_WORD "LOAD"
@@ -300,7 +280,6 @@ w_load:
     rst #20 : db #0a
     ei 
     jp (iy)
-.word_end
 
 w_ls:
     FORTH_WORD "LS"
@@ -317,7 +296,6 @@ w_ls:
     ld a, 13 : rst #08
     ei 
     jp (iy)
-.word_end
 
 w_ubput:
     FORTH_WORD "UBPUT"
@@ -350,7 +328,6 @@ w_ubput:
     ei
     rst #20 : db #0a
     jp (iy)
-.word_end
 
 w_ubget:
     FORTH_WORD "UBGET"
@@ -379,5 +356,3 @@ w_ubget:
     ei 
     rst #20 : db #0a
     jp (iy)
-.word_end
-
