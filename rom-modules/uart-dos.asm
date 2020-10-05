@@ -11,7 +11,9 @@ TAP_OUT_COMMAND = 't'
 F_WORD_TO_PAD = #1A10
 F_PREPARE_BSAVE_HEADER = #1A3D
 F_EXIT = #04B6 
-
+F_GET_BUFFER_TEXT = 0x05DF
+F_CLEAN_WORD = 0x07da
+	
 ;;;;;;;;;;;;;;;;;;;;;;; Forth's vars section
 FORTH_MODE = #0ec3
 
@@ -39,38 +41,62 @@ printZ:
     inc hl
     jr printZ 
 
-; Routine that sends file name by uart as ASCIIZ string
-; Filename goes after(SIC!) your word. Like usual load/bload
+	;; ========================================================
+	;; Read filename from input buffer and send as ASCII string
+	;;
+	;; On entry
+	;;   Filename should be next token in input buffer
+	;;
+	;; On exit
+	;;   Carry Set 	- Error
+	;; ========================================================
 sendFileName:
-    call #05df ; Find next word ROM routine
-    jr c, .error
-    push de
-    push bc
-.sendNameLoop
-    push bc
-    push de
-    ld a, (de)
-    ld e, a : call uwrite
-    pop de
-    inc de
-    pop bc
-    dec bc
-    ld a, b : or c : jr nz, .sendNameLoop
-    pop bc
-    pop de
-    call #07da ; Clean word ROM routine
-.performReceive
-    ld e, 0 : call uwrite
-    or a
-    ret
+	call F_GET_BUFFER_TEXT	; Find next word ROM routine
+
+	jr c, .error
+
+	;; DE = address of filename; BC = length
+	push de 		
+	push bc
+
+.sendNameLoop:
+	push bc 		; Save for later (to remove word from buffer)
+
+	;; Transmit word
+	ld a, (de)
+	call SENDW
+	pop bc
+
+	jr nc, .okay 		; Send succeeded, so continue
+
+	pop bc
+	pop de
+	jr .error
+
+.okay:
+	inc de
+	dec bc
+	ld a, b
+	or c
+	jr nz, .sendNameLoop
+
+	pop bc
+	pop de
+	call F_CLEAN_WORD	; Clean-up word ROM routine
+
+.performReceive:
+	;; ld e, 0 : call uwrite (original command)
+	xor a
+	call SENDW
+	ret			; Carry flag correct from SENDW
 .error 
-    scf
-    ret
+	scf			; Indicates error
+	ret
 
 justSkipName:
-     call #05df
+     call F_GET_BUFFER_TEXT
      ret c
-     call #07da
+     call F_CLEAN_WORD
      ret
 
 ; Receive from UART block type and name and display it

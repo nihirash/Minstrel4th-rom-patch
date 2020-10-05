@@ -32,7 +32,7 @@ CURR_PACKET: 	equ 0x2702	; Temporary story for packet number
 	;;      None
 	;;
 	;; On exit:
-	;;      Carry Flag	- Timed out, no data
+	;;      Carry Set 	- Timed out, no data, A corrupted
 	;;     	Carry Clear 	- A, value read
 	;;     	Always 		- BC corrupt
 	;; ========================================================
@@ -57,9 +57,8 @@ RECVW:	ld bc, RECV_RETRY
 	;; On entry:
 	;; 	None
 	;; On exit,
-	;;     	Carry Set 	- No data
+	;;     	Carry Set 	- No data, A corrupted
 	;;     	Carry Clear 	- A, value read
-	;;     	Otherwise	- A corrupt
 	;; ========================================================
 	
 RECV:	ld a, RTS_LOW		; Set RTS low
