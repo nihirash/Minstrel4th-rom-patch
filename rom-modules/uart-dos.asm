@@ -34,12 +34,12 @@ VAR_SPARE = #3C3B
 
 ;;;;;;;;;;;;;;;;;;;;;;; Assembly routines
 
-printZ:
-    ld a, (hl)
-    and a : ret z
-    push hl : rst #08 : pop hl
-    inc hl
-    jr printZ 
+;; printZ:
+;;     ld a, (hl)
+;;     and a : ret z
+;;     push hl : rst #08 : pop hl
+;;     inc hl
+;;     jr printZ 
 
 	;; ========================================================
 	;; Read filename from input buffer and send as ASCII string
@@ -57,13 +57,13 @@ sendFileName:
 
 	;; DE = address of filename; BC = length
 	push de 		
-	push bc
+	push bc			; Save for later (to remove word from buffer)
 
 .sendNameLoop:
-	push bc 		; Save for later (to remove word from buffer)
-
 	;; Transmit word
 	ld a, (de)
+
+	push bc 		
 	call SENDW
 	pop bc
 
@@ -93,292 +93,554 @@ sendFileName:
 	scf			; Indicates error
 	ret
 
+	;; ========================================================
+	;; Skip filename. Remove next word from input buffer.
+	;;
+	;; On entry
+	;;   Filename should be next token in input buffer
+	;;
+	;; On exit
+	;;   Carry Set 	- Error
+	;; ========================================================
 justSkipName:
-     call F_GET_BUFFER_TEXT
-     ret c
-     call F_CLEAN_WORD
-     ret
+	call F_GET_BUFFER_TEXT
+	ret c			; Indicates error
+	call F_CLEAN_WORD
+	and a			; Indicates success
+	ret
 
-; Receive from UART block type and name and display it
+	;; Receive from UART block type and name and display it
 getBlockTypeAndName:
-    call ureadb : ld e, a ; Save block type
-    ld hl, block_dict
-    and a : jr z, .doPrint
-    ld hl, block_bytes
+	call RECVW		; Read character
+	ret c			; Indicates error
+	ld e, a 		; Save block type for later
+	;;    call ureadb : ld e, a ; Save block type
+	ld hl, block_dict
+	and a
+	jr z, .doPrint		; Zero indicates dictionary file
+	ld hl, block_bytes	; Otherwise, assume is code block
+	
 .doPrint
-    call printZ
-    ld b, 10
+	call PRINT_MSG
+	ld b, 10		; Expect 10 characters
 .loop
-    push bc
-    call ureadb : rst #08
-    pop bc
-    djnz .loop
+	push bc
+	call RECVW		; Read character
+	jr nc, .cont		; Continue, if successful
+	pop bc			; Balance stack
+	ret			; Carry flag is set
+.cont:
+	rst 0x08		; Print character
+	pop bc
+	djnz .loop
 
-    ld a, 13 : rst #08
-    ld a, e
-    ret
-
-block_dict db 13, "Dict: ", 0
-block_bytes db 13, "Bytes: ", 0
+	ld a, 13
+	rst #08			
+	ld a, e			; Retrieve block type
+	and a			; Indicate success
+	
+	ret
+	
+block_dict:	db 13, "Dict: ", 0
+block_bytes:	db 13, "Bytes: ", 0
 
 loadVar:
-    call ureadb : ld (hl), a : inc hl : call ureadb : ld (hl), a : inc hl
-    ret
+	call RECVW
+	ret c			; Indicates timeout
+	ld (hl), a
+	inc hl
+	call RECVW
+	ret c			; Indicates timeout
+	ld (hl), a
+	inc hl
+	and a			; Reset carry to indicate success
+	ret
+	
 
 sendCRC:
-    ld e, a
-    ld a, (CRC_FIELD)
-    xor (hl) : ld (CRC_FIELD), a
-    call uwrite
-    ret
+	ld e, a			; Save data
+	ld a, (CRC_FIELD)	; Retrieve checksum
+	xor (hl)		; Update checksum
+	ld (CRC_FIELD), a	; Store checksum
+	ld a,e			; Retrieve data
+	call SENDW		; Send data
+	ret			; Carry flag indicates success/ failure
 
+	;; ========================================================
+	;; Transmit block of data over serial interface
+	;; 
+	;; On entry:
+	;; 	HL = start of block
+	;; 	DE = length of block
+	;; On exit:
+	;; 	Success - Carry clear
+	;; 	Fail    - Carry set
+	;; 	Always  - primary and alternate registes corrupted
+	;; ========================================================
 storeBlock:
-    di
-    push hl, de
-    ;; Send command
-    ld e, SAVE_TAP_BLOCK_COMMAND : call uwrite
-    call ureadb : and a : jr z, .error
+	di			; Disable interrupts to get enough speed
+	push hl			; Save start and length for later
+	push de
+	
+	;; Send command
+	ld a, SAVE_TAP_BLOCK_COMMAND
+	call SENDW
+	jr c, .error
 
-    pop de : push de
-    ;; Send chunk size
-    inc de 
-    ld a, e
-    call sendCRC : ld a, d : call sendCRC
+	;; Check for acknowledgement
+	call RECVW
+	jr c, .error
+	and a
+	jr z, .error
 
-    ; Blank crc
-    xor a : ld (CRC_FIELD), a
+	pop de			; Retrieve/ resave block length
+	push de
 
-    pop de, hl
-.loop
+	;; Send (block size+1)
+	inc de 
+	ld a, e
+	call sendCRC
+	jr c, .error
+	ld a, d
+	call sendCRC
+	jr c, .error
 
-    push hl, de
-    ld a, (hl)
-    call sendCRC
-    pop de, hl
-    inc hl : dec de
-    ld a, d : or e : jr z, .fin
-    jr .loop
-.fin
-    ld a, (CRC_FIELD), e, a : call uwrite
-    ei
-    ret
-.error
-    pop de, hl
-    ei
-    rst #20 : db #0a
-    ret
+	;; Blank CRC
+	xor a
+	ld (CRC_FIELD), a
+
+	pop de
+	pop hl
+	
+.loop:
+	push hl
+	push de
+	ld a, (hl)
+	call sendCRC
+	jr c, .error
+	pop de
+	pop hl
+	inc hl
+	dec de
+	ld a, d
+	or e
+	jr z, .fin
+	jr .loop
+
+.fin:
+	ld a, (CRC_FIELD)
+	call SENDW
+	jr c, .error2
+	ei
+	ret
+.error:
+	pop de
+	pop hl
+.error2:
+	ei
+
+	rst #20			; Abort, tape error
+	db #0a
+
+	ret
 
 ;;;;;;;;;;;;;;;;;;;;;;; Words section
 hw_store_data: ; Hidden word
     dw .code
 .code
-    call uart_init
-    ld a, (#2302) ; length of word in pad
-    and a : jp z, #1AB6 ; Tape error
-    ld hl, (#230c), a, h  : or l : jp z, #1AB6
-    push hl
-    ld de, #19, hl, #2301
-    call storeBlock
-    pop de
-    ld hl, (#230e)
-    call storeBlock
-    jp (iy)
+	call uart_init
+	ld a, (#2302) 		; length of word in pad
+	and a			; Check is nonzero
+	jp z, #1AB6		; Tape error, if zero
+	ld hl, (#230c)		; Retrieve length of block
+	ld a, h			; Check is nonzero
+	or l
+	jp z, #1AB6		; Tape error, if zero
+	
+	push hl			; Save block length
+	
+	ld de, #19		; Length of header
+	ld hl, #2301		; Start of header
+	call storeBlock		; Send header
+	
+	pop de			; Retrieve block length
+	ld hl, (#230e)		; Start of block
+	call storeBlock		; Send block
+	
+	jp (iy)			; End of Word
 
 w_bsave:
-    FORTH_WORD_ADDR "BSAVE", FORTH_MODE
-    dw F_PREPARE_BSAVE_HEADER  
-    dw hw_store_data
-    dw F_EXIT
+	FORTH_WORD_ADDR "BSAVE", FORTH_MODE
+	dw F_PREPARE_BSAVE_HEADER  
+	dw hw_store_data
+	dw F_EXIT
     
 w_save:
-    FORTH_WORD_ADDR "SAVE", FORTH_MODE
-    dw F_WORD_TO_PAD              
-    dw hw_store_data
-    dw F_EXIT
+	FORTH_WORD_ADDR "SAVE", FORTH_MODE
+	dw F_WORD_TO_PAD              
+	dw hw_store_data
+	dw F_EXIT
 
 w_tapout:
-    FORTH_WORD "TAPOUT"
-    di
-    call uart_init
-    ld e, TAP_OUT_COMMAND : call uwrite
-    jr w_tapin.common
+	FORTH_WORD "TAPOUT"
+	di
+	call uart_init
+	ld a, TAP_OUT_COMMAND
+	call SENDW
+	jr c, .error
+	jr w_tapin.common
+.error:
+	ei
+	rst #20			; Abort, tape error
+	db #0a
+	ret
 
 w_tapin:
-    FORTH_WORD "TAPIN"
-    di
-    call uart_init
-    ld e, TAP_IN_COMMAND : call uwrite
+	FORTH_WORD "TAPIN"
+	di
+	call uart_init
+	ld a, TAP_IN_COMMAND
+	call SENDW
+	jr c, .error
 .common
-    call sendFileName : jr c, .error
-    call ureadb : and a : jr z, .error ; Is file found?
-    ei
-    jp (iy)
+	call sendFileName
+	jr c, .error
+	call RECVW
+	jr c, .error
+	and a
+	jr z, .error ; Is file found?
+	ei
+	jp (iy)
+	
 .error
-    ei
-    ld e, 0 : call uwrite
-    rst #20 : db #0a
-    jp (iy)
+	ei
+	xor a
+	call SENDW
+	
+	rst #20
+	db #0a
+
+	jp (iy)
 
 w_bload:
-    FORTH_WORD "BLOAD"
-    di
-    call justSkipName
-    call uart_init
-    ld e, GET_TAP_BLOCK_COMMAND : call uwrite
-    call ureadb : and a : jp z, w_load.error
-    call getBlockTypeAndName : and a : jp z, w_load.error
-    ld e, 1 : call uwrite
-    ld hl, TMP_CURRENT 
-    ld b, 10 
-.varsloop
-    push bc
-    call ureadb ;; IGNORE VARS
-    pop bc
-    djnz .varsloop
-    call ureadb : ld l, a : call ureadb : ld h, a ; Data len
-    call ureadb : ld e, a : call ureadb : ld d, a ; Org
-    ld (TMP_CURRENT), hl, (TMP_CONTEXT), de
+	FORTH_WORD "BLOAD"
+	di
+	call justSkipName
+	call uart_init
+	ld a, GET_TAP_BLOCK_COMMAND
+	call SENDW
+	jp c, w_load.error
 
-    ;; size
-    rst #18
-    ld hl, TMP_CURRENT, a, d : or e : call nz, .save
-    ;; org
-    rst #18
-    ld hl, TMP_CONTEXT, a, d: or e : call nz, .save
+	call RECVW
+	jp c, w_load.error
+	and a
+	jp z, w_load.error
+
+	call getBlockTypeAndName
+	jp c, w_load.error
+
+	and a
+	jp z, w_load.error
+
+	ld a, 1
+	call SENDW
+	jp c, w_load.error
+	
+	ld hl, TMP_CURRENT 
+	ld b, 10 
+	
+	;; Skip variables
+.varsloop:
+	push bc
+	call RECVW ;; IGNORE VARS
+	pop bc
+	jp c, w_load.error
+	djnz .varsloop
+	
+	;; Retrieve block length into HL
+	call RECVW
+	jp c, w_load.error
+	ld l, a
+
+	call RECVW
+	jp c, w_load.error
+	ld h, a
+
+	;; Retrieve start of block into DE
+	call RECVW
+	jp c, w_load.error
+	ld e, a
+
+	call RECVW
+	jp c, w_load.error
+	ld d, a
+
+	ld (TMP_CURRENT), hl
+	ld (TMP_CONTEXT), de
+
+	;; Retrieve expected size from input buffer
+	rst #18			; Pop Forth stack to DE
+	ld hl, TMP_CURRENT 	; Retrieve value from header
+	ld a, d			; Skip, if user specified zero length
+	or e
+	call nz, .save
+
+	;; Retrieve user-specified start address
+	rst #18			; Por Forth stack to DE
+	ld hl, TMP_CONTEXT	; Retrieve value from header
+	;; ld a, d		; Commented, as user can
+	;; or e                 ; specify 0 for this.
+	call .save
     
-    ld hl, (TMP_CURRENT), de, (TMP_CONTEXT)
-.loop
-    push hl, de
-    call ureadb
-    ld (de), a
-    pop de, hl
-    inc de : dec hl : ld a, l : or h : jr nz, .loop
+	ld hl, (TMP_CURRENT)	; Retrieve final values
+	ld de, (TMP_CONTEXT)
 
-.exit
-    ei
-    jp (iy)
-.save
-    ld (hl), de
-    ret
+.loop:
+	call RECVW
+	jp c, w_load.error	; Check for time-out
+
+	ld (de), a		; Store value
+	inc de			; Advance to next byte
+	dec hl
+	ld a, l			; Unless we are done
+	or h
+	jr nz, .loop
+
+.exit:
+	ei
+	jp (iy)
+
+.save:
+	ld (hl), de
+	ret
 
 w_load:
-    FORTH_WORD "LOAD"
-    call justSkipName
-    call uart_init
-    ld e, GET_TAP_BLOCK_COMMAND : call uwrite
-    call ureadb : and a : jr z, .error
-    call getBlockTypeAndName : and a : jr nz, .error
+	FORTH_WORD "LOAD"
+	call justSkipName
+	call uart_init
+	ld a, GET_TAP_BLOCK_COMMAND
+	call SENDW
+	jr c, .error
 
-    ld e, 1 : call uwrite ; Send confirm byte 
-    di
-    ;; Loading vars
+	call RECVW		; Get acknowledgement
+	jr c, .error		; Exit, if timed out
+	and a
+	jr z, .error		; Exit if not acknowledged
+	
+	call getBlockTypeAndName
+	jr c, .error		; Exit, if timeout
+	and a
+	jr nz, .error		; Exit, if not Dictionary
 
-    ld hl, TMP_DICT : call loadVar
-    ld hl, TMP_CURRENT 
-    dup 4
-    call loadVar 
-    edup 
+	ld a, 1
+	call SENDW 		; Send confirm byte 
+	jr c, .error		; Exit, if time-out
+	
+	;; Loading vars
+	di
 
-    call ureadb : ld l, a : call ureadb : ld h, a ; Data len
-    call ureadb : ld e, a : call ureadb : ld d, a ; Org
-    push hl
-    ld hl, (TMP_STKBOT)
-    ld bc, #0c : add hl, bc
-    ld (VAR_SPARE), hl
-    pop hl
-.loop
-    push hl, de
-    call ureadb : ld (de), a
-    pop de, hl
-    inc de
-    dec hl : ld a, h : or l : jr z, .exit
-    jp .loop
-    
+	ld hl, TMP_DICT
+	call loadVar
+	jr c, .error
+	
+	ld hl, TMP_CURRENT 
+	dup 4
+	call loadVar
+	jr c, .error
+	edup 
+
+	;; Retrieve block length into HL
+	call RECVW
+	jr c, .error
+	ld l, a
+
+	call RECVW
+	jr c, .error
+	ld h, a
+
+	;; Retrieve start of block into DE
+	call RECVW
+	jr c, .error
+	ld e, a
+
+	call RECVW
+	jr c, .error
+	ld d, a
+
+	push hl
+	ld hl, (TMP_STKBOT)
+	ld bc, #0c 		; Leave 12 bytes for stack underflow
+	add hl, bc
+	ld (VAR_SPARE), hl
+	pop hl
+	
+.loop:
+	call RECVW		; Retrieve next byte
+	jr c, .error
+	
+	ld (de), a		; Store byte
+	inc de			; Advance to next byte
+	dec hl
+	ld a, h			; Unless done
+	or l
+	jr z, .exit
+	jr .loop
+
+	;; Update system variables
 .exit
-    ld hl, TMP_CURRENT, de, VAR_CURRENT, bc, 8 : ldir ; moving vars 
-    ld hl, (TMP_DICT), (VAR_DICT), hl 
+	ld hl, TMP_CURRENT	
+	ld de, VAR_CURRENT
+	ld bc, 8
+	ldir ; moving vars 
+	ld hl, (TMP_DICT)
+	ld (VAR_DICT), hl 
     
-    ei
-    jp (iy)
+	ei
+	jp (iy)
 
 .error
-    ld e, 0 : call uwrite ; Send cancel byte
-    rst #20 : db #0a
-    ei 
-    jp (iy)
+	xor a
+	call SENDW ; Send cancel byte
+
+	ei 
+	rst #20	   ; Abort, tape error
+	db #0a
+
+	jp (iy)
 
 w_ls:
-    FORTH_WORD "LS"
-    di
-    call uart_init
-    ld e, GET_CATALOG_COMMAND : call uwrite
-    ld a, 13 : rst #08
+	FORTH_WORD "LS"
+	di
+	call uart_init
+	ld a, GET_CATALOG_COMMAND
+	call SENDW
+	jr c, .error
+	ld a, 13
+	rst #08
 .loop
-    call ureadb
-    cp #ff : jr z, .exit
-    rst #08
-    jp .loop
+	call RECVW
+	jr c, .error
+	cp #ff			; Check if terminator
+	jr z, .exit		; Exit, if so
+	rst #08			; Otherwise print character
+	jr .loop
 .exit
-    ld a, 13 : rst #08
-    ei 
-    jp (iy)
+	ld a, 13		; Print new line
+	rst #08
+	ei 
+	jp (iy)
+.error:
+	ld a, 13 		; Send carriage return
+	rst #08
 
+	ei 
+	rst #20	  		 ; Abort, tape error
+	db #0a
+
+	jp (iy)
+	
+	
 w_ubput:
-    FORTH_WORD "UBPUT"
-    di
-    call uart_init
+	FORTH_WORD "UBPUT"
+	di
+	call uart_init
 
-    ld e, BINARY_PUT_COMMAND : call uwrite
-    call sendFileName : jr c, .error
-    
-    rst #18 ; File size
-    push de
-    call uwrite : ld e, d : call uwrite
+	ld a, BINARY_PUT_COMMAND
+	call SENDW
+	jr c, .error		; Time-out
 
-    rst #18
-    ex hl, de
-    pop bc
-.sendLoop
-    push bc
-    ld a, (hl), e, a : call uwrite
-    inc hl
-    pop bc
-    dec bc
-    ld a, b : or c
-    jr nz, .sendLoop
+	call sendFileName
+	jr c, .error	
 
-.exit
-    ei
-    jp (iy)
-.error
-    ei
-    rst #20 : db #0a
-    jp (iy)
+	;; Retrieve block length
+	rst #18 		; Pop top of Forth stack into DE
+
+	ld a, e
+	call SENDW
+	jr c, .error		; Time-out
+	ld a, d
+	call SENDW
+	jr c, .error		; Time-out
+	push de
+
+	;; Retrieve start of block
+	rst #18			; Pop top of Forth stack into DE
+	ex hl, de		; Move to HL
+	pop de			; DE contains block length
+
+.sendLoop:
+	ld a, (hl)
+	
+	call SENDW
+	jr c, .error
+
+	inc hl
+	dec de
+	ld a, d
+	or e
+	jr nz, .sendLoop
+
+.exit:
+	ei
+	jp (iy)	
+
+.error:
+	ei
+
+	rst #20			; Abort, tape error
+	db #0a
+
+	jp (iy)
 
 w_ubget:
-    FORTH_WORD "UBGET"
-    di
-    call uart_init
-    ld e, BINARY_GET_COMMAND : call uwrite
-    call sendFileName : jr c, .error
-    call ureadb : ld l, a
-    call ureadb : ld h, a
-    or l : jr z, .error
-    push hl
-    rst #18
-    pop bc
-.downloop
-    push bc
-    call ureadb
-    ld (de), a
-    inc de
-    pop bc
-    dec bc
-    ld a, b : or c : jr nz, .downloop
-.exit   
-    ei
-    jp (iy)
-.error
-    ei 
-    rst #20 : db #0a
-    jp (iy)
+	FORTH_WORD "UBGET"
+	di
+	call uart_init
+	ld a, BINARY_GET_COMMAND
+	call SENDW
+	jr c, .error
+	
+	call sendFileName
+	jr c, .error
+	
+	;; Read block length into HL
+	call RECVW
+	jr c, .error
+	ld l, a
+
+	call RECVW
+	jr c, .error
+	ld h, a
+
+	;; Check length is non-zero
+	or l			; A contains copy of H
+	jr z, .error
+
+	;; Retrieve start address from input buffer into DE
+	push hl
+	rst #18			; Retrieve top of stack into DE
+	pop hl
+	
+.downloop:
+	call RECVW
+	jr c, .error
+	
+	ld (de), a
+	inc de
+
+	dec hl
+	ld a, h
+	or l
+	jr nz, .downloop
+
+.exit:   
+	ei
+	jp (iy)
+
+.error:
+	ei
+	
+	rst #20			; Abort, tape error
+	db #0a
+	
+	jp (iy)
