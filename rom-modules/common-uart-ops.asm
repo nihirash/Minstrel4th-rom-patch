@@ -1,69 +1,183 @@
-DATA_REG = 129
-CONTROL_REG = 128
-
-RTS_LOW = #16
-RTS_HIGH = #56
-
-; Resets UART buffers and set 115200 8N1 with RTS high(deny to send)
+CONTROL_REG:	equ 0x80	; Based on 6850 serial module
+DATA_REG:	equ 0x81
+RESET:		equ 0x03	; Reset the serial device
+RTS_LOW:	equ 0x16 	; Clock div: +64, 8+1-bit
+RTS_HIGH:	equ 0x56	; Clock div: +64, 8+1-bit
+RECV_RETRY:	equ 0x1000	; Retry count for RECV op
+SEND_RETRY:	equ 0x1000	; Retry count for SEND op
+	
+CR:		equ 0x0d
+LF:		equ 0x0a
+	
+	;; Resets UART buffers and set 115200,
+	;; 8N1 with RTS high(deny to send)
 uart_init:
-    ld a, 3, c, CONTROL_REG : out (c), a
-    ld a, RTS_HIGH : out (c), a
-    ret
+	ld a, RESET
+	out (CONTROL_REG),a	; Send reset signal to serial device
 
-; UART Read byte(non blocking)
-;
-; Carry set when byte received, byte in A
-; Carry clear when byte absent in UART buffer
-uread:
-   ld a, RTS_LOW, c, CONTROL_REG : out (c), a
-   in a, (c) : and 1 : jr z, .exit
+	ld a, RTS_HIGH		
+	out (CONTROL_REG),a	; +64; 8 bits+1 stop; RTS high; no int
 
-   ld a, RTS_HIGH, c, CONTROL_REG : out (c), a
-   in a, (DATA_REG) : scf : ret
-.exit
-    ld a, RTS_HIGH, c, CONTROL_REG : out (c), a
-    or a
-    ret
+	ret
 
-; UART Read byte(if byte absent in buffer - will wait for byte)
-; Byte will be in A
-ureadb:
-    call uread : jr nc, ureadb
-    ret
+	;; ========================================================
+	;; (Part-blocking) receive byte from serial port
+	;;
+	;; On entry:
+	;;      None
+	;;
+	;; On exit:
+	;;      Carry Set 	- Timed out, no data, A corrupted
+	;;     	Carry Clear 	- A, value read
+	;;     	Always 		- BC corrupt
+	;; ========================================================
+RECVW:	ld bc, RECV_RETRY
+	
+.loop:
+	call RECV		; Non-blocking receive
+	ret nc			; Indicates success
 
-; Send byte 
-; NB! Byte should be in E register
-uwrite:
-    in a, (CONTROL_REG) : and 2 : jr z, uwrite
-    ld c, DATA_REG, a, e : out (c), a
-    ret
+	dec bc			; Reduce counter
+	ld a,b			; Check if out of attempts
+	or c
+
+	jr nz, .loop		; Retry, if not out of attempts
+
+	scf			; Indicates time-out
+	ret
+	
+	;; ========================================================
+	;; (Non-blocking) receive byte from serial port
+	;; 
+	;; On entry:
+	;; 	None
+	;; On exit,
+	;;     	Carry Set 	- No data, A corrupted
+	;;     	Carry Clear 	- A, value read
+	;; ========================================================
+	
+RECV:	ld a, RTS_LOW		; Set RTS low
+	out (CONTROL_REG),a  	; Confirm ready to receive
+
+	in a,(CONTROL_REG)	; Check if byte ready
+	and 0x01		; Bit zero set, if so
+
+	jr z, .no_byte		; No data available
+
+	ld a, RTS_HIGH		; Set RTS high
+	out (CONTROL_REG),a	; Hold receiver
+
+	in a, (DATA_REG)	; Read byte
+	
+	and a 			; Reset carry, to indicate success
+
+	ret
+
+.no_byte:	
+	ld a, RTS_HIGH		; Set RTS high
+	out (CONTROL_REG),a	; Hold receive
+	
+	scf			; Set carry, to indicate timeout
+
+	ret
+
+	;; ========================================================
+	;; Part-blocking send byte to serial port
+	;; 
+	;; On entry:
+	;;     A = byte to send
+	;; 
+	;; On exit,
+	;;     Carry Set 	- Timed out
+	;;     Carry Clear 	- Success
+	;;     Always 		- AF, BC corrupted
+	;; ========================================================
+
+SENDW:	ld bc, SEND_RETRY	; Maximum retries
+	
+	push af			; Save byte to send
+
+.check:
+	xor a			;
+	in a,(CONTROL_REG)	; Check if ready to send
+	and 0x02		; Bit 1 high, if so
+
+	jr nz, .send_byte	; Ready to send
+	
+	dec bc			; Try again
+	ld a,b
+	or c
+	jr nz, .check
+
+	pop af			; Balance stack
+	
+	scf			; Indicates time-out
+
+	ret
+	
+.send_byte:
+	pop af			; Retrieve data to send
+	out (DATA_REG),a
+	
+	and a			; Indicates success	
+	
+	ret
+
 
 ;;;;;;;;;;;;;;;;;;;;;;; Words section
 
 w_uwrite:
-    FORTH_WORD "UWRITE"
-    rst #18
-    call uwrite
-    jp (iy)
+	FORTH_WORD "UWRITE"
+	rst 0x18		; Retrieve value from stack to DE
+	ld a,e
+	
+	ld de,0x0000
+	
+	call SENDW
+
+	jr nc, .cont		; Jump forward if success
+	
+	dec de			; DE = -1, if failed
+	
+.cont:	
+	rst 0x10
+	
+	jp (iy)
+.word_end:
 
 w_ureads:
     FORTH_WORD "UREADS"
-    call ureadb
-    ld d, 0, e, a
-    rst #10
-    jp (iy)
+	ld de, 0xffff		; -1 indicates no data read
+
+	call RECVW
+	
+	jr c, .cont		; No byte received
+
+	ld e,a
+	ld d,0
+.cont:	
+	rst 0x10
+
+	jp (iy)
+.word_end:
 
 w_uread:
-    FORTH_WORD "UREAD"
-    ld de, #ffff
-    call uread
-    jr nc, .fine
-    ld d, 0, e, a
-.fine
-    rst #10
-    jp (iy)
+	FORTH_WORD "UREAD"
+	ld de, 0xffff		; -1 indicates no data read
+
+	call RECV		; Non-blocking read
+	
+	jr c, .cont		; No byte received
+
+	ld e,a			; Transfer byte into DE,
+	ld d,0			; ready to push onto Forth stack
+.cont:	
+	rst 0x10		; Push onto stack
+
+	jp (iy)
+.word_end:
 
 w_uinit:
-    FORTH_WORD "UINIT"
-    call uart_init
-    jp (iy)
+	FORTH_WORD "UINIT"
+	call uart_init
+	jp (iy)

@@ -1,6 +1,3 @@
-RECV_RETRY:	equ 0x1000	; Retry count for RECV op
-SEND_RETRY:	equ 0x1000	; Retry count for SEND op
-	
 	;; XMODEM protocol parameters
 XMODEM_SOH:	equ 0x01
 XMODEM_EOT:	equ 0x04
@@ -17,117 +14,11 @@ EXWRCH:		equ 0x3C29	; Address of alternative print routine
 FLAGS:		equ 0x3c3e
 
 	;; Miscellaneous params
-CR:	equ 0x0d
-LF:	equ 0x0a
-	
 LAST_PACKET: 	equ 0x2701	; Temporary store for length of last
 				; packet in PAD (1 byte)
 CURR_PACKET: 	equ 0x2702	; Temporary story for packet number
 				; in PAD (2 bytes)
 	
-	;; ========================================================
-	;; (Part-blocking) receive byte from serial port
-	;;
-	;; On entry:
-	;;      None
-	;;
-	;; On exit:
-	;;      Carry Set 	- Timed out, no data, A corrupted
-	;;     	Carry Clear 	- A, value read
-	;;     	Always 		- BC corrupt
-	;; ========================================================
-RECVW:	ld bc, RECV_RETRY
-	
-.loop:
-	call RECV		; Non-blocking receive
-	ret nc			; Indicates success
-
-	dec bc			; Reduce counter
-	ld a,b			; Check if out of attempts
-	or c
-
-	jr nz, .loop		; Retry, if not out of attempts
-
-	scf			; Indicates time-out
-	ret
-	
-	;; ========================================================
-	;; (Non-blocking) receive byte from serial port
-	;; 
-	;; On entry:
-	;; 	None
-	;; On exit,
-	;;     	Carry Set 	- No data, A corrupted
-	;;     	Carry Clear 	- A, value read
-	;; ========================================================
-	
-RECV:	ld a, RTS_LOW		; Set RTS low
-	out (CONTROL_REG),a  	; Confirm ready to receive
-
-	in a,(CONTROL_REG)	; Check if byte ready
-	and 0x01		; Bit zero set, if so
-
-	jr z, .no_byte		; No data available
-
-	ld a, RTS_HIGH		; Set RTS high
-	out (CONTROL_REG),a	; Hold receiver
-
-	in a, (DATA_REG)	; Read byte
-	
-	and a 			; Reset carry, to indicate success
-
-	ret
-
-.no_byte:	
-	ld a, RTS_HIGH		; Set RTS high
-	out (CONTROL_REG),a	; Hold receive
-	
-	scf			; Set carry, to indicate timeout
-
-	ret
-
-	;; ========================================================
-	;; Part-blocking send byte to serial port
-	;; 
-	;; On entry:
-	;;     A = byte to send
-	;; 
-	;; On exit,
-	;;     Carry Set 	- Timed out
-	;;     Carry Clear 	- Success
-	;;     Always 		- AF, BC corrupted
-	;; ========================================================
-
-SENDW:	ld bc, SEND_RETRY	; Maximum retries
-	
-	push af			; Save byte to send
-
-.check:
-	xor a			;
-	in a,(CONTROL_REG)	; Check if ready to send
-	and 0x02		; Bit 1 high, if so
-
-	jr nz, .send_byte	; Ready to send
-	
-	dec bc			; Try again
-	ld a,b
-	or c
-	jr nz, .check
-
-	pop af			; Balance stack
-	
-	scf			; Indicates time-out
-
-	ret
-	
-.send_byte:
-	pop af			; Retrieve data to send
-	out (DATA_REG),a
-	
-	and a			; Indicates success	
-	
-	ret
-
 	;; ========================================================
 	;; Send packet of 128 bytes, w/ checksum, in line with
 	;; XMODEM protocol

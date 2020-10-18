@@ -134,15 +134,15 @@ getBlockTypeAndName:
 	pop bc
 	djnz .loop
 
-	ld a, 13
+	ld a, CR
 	rst #08			
 	ld a, e			; Retrieve block type
 	and a			; Indicate success
 	
 	ret
 	
-block_dict:	db 13, "Dict: ", 0
-block_bytes:	db 13, "Bytes: ", 0
+block_dict:	db CR, "Dict: ", 0
+block_bytes:	db CR, "Bytes: ", 0
 
 loadVar:
 	call RECVW
@@ -515,7 +515,7 @@ w_ls:
 	ld a, GET_CATALOG_COMMAND
 	call SENDW
 	jr c, .error
-	ld a, 13
+	ld a, CR
 	rst #08
 .loop
 	call RECVW
@@ -525,12 +525,12 @@ w_ls:
 	rst #08			; Otherwise print character
 	jr .loop
 .exit
-	ld a, 13		; Print new line
+	ld a, CR		; Print new line
 	rst #08
 	ei 
 	jp (iy)
 .error:
-	ld a, 13 		; Send carriage return
+	ld a, CR 		; Send carriage return
 	rst #08
 
 	ei 
