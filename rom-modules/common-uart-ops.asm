@@ -1,16 +1,16 @@
-CONTROL_REG:	equ 0x80	; Based on 6850 serial module
-DATA_REG:	equ 0x81
+CONTROL_REG:	equ 0x80	; Port addresses for 6850 serial module
+DATA_REG:	equ 0x81	; 
 RESET:		equ 0x03	; Reset the serial device
 RTS_LOW:	equ 0x16 	; Clock div: +64, 8+1-bit
 RTS_HIGH:	equ 0x56	; Clock div: +64, 8+1-bit
 RECV_RETRY:	equ 0x1000	; Retry count for RECV op
 SEND_RETRY:	equ 0x1000	; Retry count for SEND op
 	
-CR:		equ 0x0d
-LF:		equ 0x0a
+CR:		equ 0x0d	; Carriage return
+LF:		equ 0x0a	; Linefeed
 	
-	;; Resets UART buffers and set 115200,
-	;; 8N1 with RTS high(deny to send)
+	;; Resets UART buffers and set to 115,200 baud, 8N1,
+	;; with RTS high (deny to send)
 uart_init:
 	ld a, RESET
 	out (CONTROL_REG),a	; Send reset signal to serial device
@@ -28,10 +28,10 @@ uart_init:
 	;;
 	;; On exit:
 	;;      Carry Set 	- Timed out, no data, A corrupted
-	;;     	Carry Clear 	- A, value read
+	;;     	Carry Clear 	- A = value read
 	;;     	Always 		- BC corrupt
 	;; ========================================================
-RECVW:	ld bc, RECV_RETRY
+RECVW:	ld bc, RECV_RETRY	; Maximum number of read attempts
 	
 .loop:
 	call RECV		; Non-blocking receive
@@ -44,6 +44,7 @@ RECVW:	ld bc, RECV_RETRY
 	jr nz, .loop		; Retry, if not out of attempts
 
 	scf			; Indicates time-out
+
 	ret
 	
 	;; ========================================================
@@ -53,7 +54,7 @@ RECVW:	ld bc, RECV_RETRY
 	;; 	None
 	;; On exit,
 	;;     	Carry Set 	- No data, A corrupted
-	;;     	Carry Clear 	- A, value read
+	;;     	Carry Clear 	- A = value read
 	;; ========================================================
 	
 RECV:	ld a, RTS_LOW		; Set RTS low
@@ -181,3 +182,4 @@ w_uinit:
 	FORTH_WORD "UINIT"
 	call uart_init
 	jp (iy)
+.word_end:

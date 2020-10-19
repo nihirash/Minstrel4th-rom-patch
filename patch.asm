@@ -9,12 +9,13 @@ LINK = #1D58
     device zxspectrum48 // Only for using SAVEBIN
 
     org #0
-    incbin "minstrel.rom"
+    incbin "ace.rom" ; "ace.rom" = 3.25 MHz / "minstrel.rom" = 6.5MHz
 	
 ;;;;;;;;;;;;;;;;;;;;;;; Additional ROM section
     org #2800
 
     include "rom-modules/common-uart-ops.asm"
+    include "rom-modules/case.asm" ; CASE construct (Optional)
     include "rom-modules/uart-dos.asm"
     include "rom-modules/uart-xmodem.asm"
 	
