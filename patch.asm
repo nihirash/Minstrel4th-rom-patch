@@ -25,6 +25,7 @@ LINK = #1D58			; Addr of name-length field of UFLOAT
 	;; require "common-uart-ops.asm".
 	org #2800
 
+	include "rom-modules/clock_check.asm"	  ; Check and record clock speed
 	include "rom-modules/common-uart-ops.asm" ; Basic UART ops
 	include "rom-modules/case.asm" 	      ; CASE construct (Optional)
 	include "rom-modules/uart-dos.asm"    ; UART support for PC file
@@ -52,7 +53,12 @@ LINK = #1D58			; Addr of name-length field of UFLOAT
 
 	org #1ffd
 	dw LINK
-    
+
+	;; Update QUIT command, so that clock-speed is checked and
+	;; system variables are updated
+	org 0x00a0
+	jp CHECK_CLOCK
+	
 ;;;;;;;;;;;;;;;;;;;;;;; Export binary file
 	savebin "patched.rom", 0, 16384
 
