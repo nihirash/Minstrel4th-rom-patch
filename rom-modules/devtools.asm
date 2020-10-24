@@ -1,8 +1,5 @@
 	;; Additional words that are useful for developers
 
-STKBOT:	equ 0x3c37
-SPARE:	equ 0x3c3b
-
 	;; Switch to hexidecimal mode (analogue of built-in DECIMAL)
 w_hex:
 	FORTH_WORD "HEX"
@@ -27,51 +24,36 @@ w_code:
 	db 0xb6, 0x04
 .word_end:
 
+	;; .S ( -- )
+	;; Pronounced "dot-S". A debugging command writes Forth stack
+	;; contents to screen without affecting stack
 w_dots:
-	FORTH_WORD ".S"
+	FORTH_WORD_ADDR ".S", FORTH_MODE
 
-	call .get_depth
-
-	ld a,b			; Check if any values on stack
-	or c
-	jr z, .done		; If not, then we are done
-
-.loop:	inc de			; Move to high byte first
-	ld a, (de)		; Retrieve it
-	dec de			; Back to low byte
-	and a			; Check if non-zero
-	jr z, .cont		; Skip if not
-	call PRINT_HEX
-.cont:
-	ld a,(de)		; Retrieve low byte
-	call PRINT_HEX		; Print it
-	
-	inc de			; Advance to next value on stack
-	inc de
-	
-	dec bc			; See if we are done
-	dec bc
-	ld a, b
-	or c
-	jr z, .done
-
-	ld a, 0x20		; Print 'space'
-	rst 0x08
-
-	jr .loop
-	
-.done:  jp (iy)
-	
-.get_depth:
-	ld hl, (STKBOT)		; End of dictionary
-	ld de, 0x000c		; Minstrel leaves 12 bytes for padding
-	add hl, de		; to prevent stack-underflow problems
-	ex hl, de		; DE = bottom of stack
-	ld hl, (SPARE)		; HL = top of stack
-	and a			; Clear carry flag
-	sbc hl, de		; HL = length of stack
-	ld b,h			; Move to BC
-	ld c,l
-
-	ret
+	dw 0x1011		; Stack next word
+	dw 0x3c3b		; SPARE
+	dw 0x08b3		; @
+	dw 0x0460		; HERE
+	dw 0x1011		; Stack next word
+	dw 0x000c		; 12 (decimal)
+	dw 0x0dd2		; + (ADD)
+	dw 0x0912		; OVER
+	dw 0x0912		; OVER
+	dw 0x0de1		; - (SUBTRACT)
+	dw 0x1283		; ?BRANCH
+	dw 0x0015		; Forward 21 (decimal) bytes
+	dw 0x1323		; Shuffle
+	dw 0x12e9		; I (RETRIEVE LOOP INDEX)
+	dw 0x08b3		; @
+	dw 0x09b3		; . (PRINT IT)
+	dw 0x1011		; Stack next word
+	dw 0x0002		;
+	dw 0x133c		; END OF LOOP
+	dw 0xfff3		; -13 (decimal) bytes
+	dw 0x1271		; BRANCH
+	dw 0x0007		; +7 (decimal) bytes
+	dw 0x0879		; DROP
+	dw 0x0879		; DROP
+	dw 0x12a4		; END
+	dw 0x04b6		; NEXT
 .word_end:
