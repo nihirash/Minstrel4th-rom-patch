@@ -31,7 +31,7 @@ LINK = #1D58			; Addr of name-length field of UFLOAT
 					      ; server
 	include "rom-modules/uart-xmodem.asm" ; UART support for XMODEM
 	include "rom-modules/devtools.asm"    ; Additional tools for
-					      ; developers
+					      ; developers (needs uart-xmodem.asm)
 	
 	DISPLAY "Bytes left: ", #3BFF - $
 	
