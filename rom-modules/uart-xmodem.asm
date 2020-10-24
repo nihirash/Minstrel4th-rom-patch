@@ -124,7 +124,6 @@ TEE_KERNEL:
 .done:
 	jp 0x03ff		; Continue with ROM printing routine
 
-
 	;; ========================================================
 	;; Print contents of A register as a two-digit hex number
 	;; 
@@ -677,26 +676,5 @@ w_xbput:
 
 	jp (iy) 		; Return to FORTH
 .word_end:
-
-w_hex:
-	FORTH_WORD "HEX"
-	ld (IX + 0x3F), 0x10
-	jp (iy)	
-.word_end:
-
-w_code:
-.name:  ABYTEC 0 "CODE"
-.name_end:
-	dw LINK                 ; Link field 
-	SET_VAR LINK, $         
-	db .name_end - .name    ; Name-length field
-	dw 0x1085               ; Code field
-	dw .entry               ; Parameter field
-	db 0xe8, 0x10, 0xf0, 0xff
-.entry:	db 0xcd, 0xf0, 0x0f
-	db 0xa7, 0x10
-	db 0xb6, 0x04
-.word_end:
-
 
 end:	

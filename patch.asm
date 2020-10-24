@@ -1,40 +1,58 @@
 ;
 ; This is skeleton for Minstrel 4th ROM patch
-LINK = #1D58
+
+	;; LINK is used to keep track of address of name-length
+	;; field in most recently defined word. Needed to ensure
+	;; dictionary (a linked list) is defined correctly.
+LINK = #1D58			; Addr of name-length field of UFLOAT
+
   
 ;;;;;;;;;;;;;;;;;;;;;;; Global macros section
-    include "rom-modules/forth-word-macro.asm"
+	include "rom-modules/forth-word-macro.asm"
 
 ;;;;;;;;;;;;;;;;;;;;;;; Original ROM section
-    device zxspectrum48 // Only for using SAVEBIN
+	device zxspectrum48 // Only for using SAVEBIN
 
-    org #0
-    incbin "ace.rom" ; "ace.rom" = 3.25 MHz / "minstrel.rom" = 6.5MHz
+	;; Choose base ROM: "ace.rom" is original, 3.25 MHz ROM from
+	;; Ace; "minstrel.rom" is modified version of Ace ROM for 6.5MHz
+	;; clock speed.
+	org 0x0000
+	incbin "ace.rom" ; "ace.rom" = 3.25 MHz / "minstrel.rom" = 6.5MHz
 	
 ;;;;;;;;;;;;;;;;;;;;;;; Additional ROM section
-    org #2800
+	;; Uncomment lines corresponding to functionality you wish to
+	;; include. Note that "uart-dos.asm" and "uart-xmodem.asm" both
+	;; require "common-uart-ops.asm".
+	org #2800
 
-    include "rom-modules/common-uart-ops.asm"
-    include "rom-modules/case.asm" ; CASE construct (Optional)
-    include "rom-modules/uart-dos.asm"
-    include "rom-modules/uart-xmodem.asm"
+	include "rom-modules/common-uart-ops.asm" ; Basic UART ops
+	include "rom-modules/case.asm" 	      ; CASE construct (Optional)
+	include "rom-modules/uart-dos.asm"    ; UART support for PC file
+					      ; server
+	include "rom-modules/uart-xmodem.asm" ; UART support for XMODEM
+	include "rom-modules/devtools.asm"    ; Additional tools for
+					      ; developers
 	
-    DISPLAY "Bytes left: ", #3BFF - $
+	DISPLAY "Bytes left: ", #3BFF - $
 	
 ;;;;;;;;;;;;;;;;;;;;;;; Rename tape routines
-    org 0x1930 ; SAVE header
-    db 'T'+0x80 
-    org 0x1940 ; BSAVE header
-    db 'T'+0x80 
-    org 0x1950 ; BLOAD header
-    db 'T'+0x80 
-    org 0x1986 ; LOAD header
-    db 'T'+0x80 
+	org 0x1930 ; SAVE header
+	db 'T'+0x80 
+	org 0x1940 ; BSAVE header
+	db 'T'+0x80 
+	org 0x1950 ; BLOAD header
+	db 'T'+0x80 
+	org 0x1986 ; LOAD header
+	db 'T'+0x80 
 
 ;;;;;;;;;;;;;;;;;;;;;;; Dictionary hack place
-    org #1ffd
-    dw LINK
+	;; Update link field address used to create word "FORTH", to
+	;; point to name-length field in last word of extended
+	;; dictionary.
+
+	org #1ffd
+	dw LINK
     
 ;;;;;;;;;;;;;;;;;;;;;;; Export binary file
-    savebin "patched.rom", 0, 16384
+	savebin "patched.rom", 0, 16384
 
