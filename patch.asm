@@ -58,6 +58,9 @@ LINK = #1D58			; Addr of name-length field of UFLOAT
 	;; system variables are updated
 	org 0x00a0
 	jp CHECK_CLOCK
+
+	org 0x014b		; KEYBOARD check
+	call get_key		; Splice in custom routine.
 	
 ;;;;;;;;;;;;;;;;;;;;;;; Export binary file
 	savebin "patched.rom", 0, 16384

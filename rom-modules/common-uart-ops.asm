@@ -8,6 +8,90 @@ SEND_RETRY:	equ 0x1000	; Retry count for SEND op
 	
 CR:		equ 0x0d	; Carriage return
 LF:		equ 0x0a	; Linefeed
+
+KEYROW_4L:      equ 0xfefe
+KEYROW_4R:      equ 0x7ffe
+
+	;; Terminal-input routine spliced into Ace interrupt code
+get_key:
+	ld a,(0x3c3e)		; FLAGS
+	and 0x20		; Check if Bit 5 is set
+
+	jp z, 0x0310		; Continue with KEYBOARD
+
+	call check_break	; Check if BREAK pressed (on Minstrel)
+
+	call RECV		; Otherwise, check for input on UART
+
+	jr c, .error		; If none, error
+
+	;; Check for control character ( 0 ... 26 )
+	cp 0x1b			; 0x1b = Escape
+	jr nc, .check_escape	; Skip forward if not
+
+	ld e,a
+	ld d,0
+	ld hl, control_lookup
+	add hl, de
+	ld a, (hl)
+	ret
+
+.check_escape:
+	cp 0x1b
+	jr nz, .check_normal
+
+	call RECVW		; Receive escape code
+
+	jr c, .error		; Error if no second byte
+
+	cp 65			; Only accept 65, ..., 68
+	jr c, .error
+	cp 69
+	jr nc, .error
+
+	sub 65			; Normalise code
+
+	ld e,a
+	ld d,0
+	ld hl, escape_lookup
+	add hl, de
+	ld a, (hl)
+	ret
+
+.check_normal:
+	cp 0x80			; Only accept values up to 127
+	ret c			; If so, done.
+	
+.error:
+	xor a
+	ret
+
+control_lookup:
+	db 00, 00, 00, 00, 00, 00, 01, 03 ; ASCII 0, .., .7
+	db 05, 00, 00, 00, 00, 13, 00, 00 ; ASCII 8, ..., 15
+	db 00, 08, 00, 00, 07, 00, 09, 00 ; ASCII 16, ..., 23
+	db 10, 00, 04			  ; ASCII 24, ..., 26
+
+escape_lookup:
+	db 07, 09, 01, 03	; Up, down, left, right
+	
+check_break:	
+	        ;; Check for BREAK (Shift-SPACE on Minstrel keyboard)
+        ld bc, KEYROW_4L        ; Port for bottom left half-row
+        in a,(c)                ; Read keyboard
+        bit 0,a                 ; Check 'SHIFT'
+        ret nz	        	; Can stop test, if not being pressed
+
+        ld bc, KEYROW_4R        ; Port for bottom right half-row
+        in a,(c)                ; Read keyboard
+        bit 0,a                 ; Check 'SPACE'
+
+        ret nz        		; Can stop test, if not being pressed
+
+        ;; BREAK pressed, so reinstate normal keyboard scan of Minstrel
+        res 5,(ix+0x3e)         ; Reinstate usual keyboard routine
+
+        ret                     ; Done
 	
 	;; Resets UART buffers and set to 115,200 baud, 8N1,
 	;; with RTS high (deny to send)

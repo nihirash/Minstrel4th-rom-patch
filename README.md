@@ -26,6 +26,7 @@ Current supported operations:
  * xbget ( addr -- flag )- download block of memory using XMODEM protocol. Syntax is `ADDRESS xbget`. On exit, TOS contains 0, if transfer succeeded and -1 otherwise.
  * `tee ( -- )` - echo screen output to serial interface. Useful for capturing FORTH word listings or the transcript of an adventure game, for example.
  * `untee ( -- )` - disable echoing of screen output to the serial interface.
+ * `tty ( -- )` - source keyboard input from serial card and echo screen output to serial card (the latter as with TEE). This allows you to program th Minstrel 4th from a PC, either by typing or pasting commands into a terminal program connected to the Minstrel 4th. Minstrel 4th control codes are implemented as follows: ^H or Backspace = Backspace; ^M or Return = Enter; ^X = Caps-1 (clear current line); ^Z = Caps-9 (Graphics mode); ^Q = Toggle True/ Inverse video; ^F, ^G, ^T, ^V = cursor keys (Wordstar-like).
  * `hex ( -- )` - change BASE to hexidecimal (analogue of DECIMAL).
  * `code ( -- )` - create simple machine code routine. See Jupiter Ace user manual, Chapter 25, for details.
  

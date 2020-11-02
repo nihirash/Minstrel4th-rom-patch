@@ -322,7 +322,7 @@ DRAIN_SENDER:
 	;; ========================================================
 W_TEE:
 	FORTH_WORD "TEE"
-	ld hl, TEE_KERNEL
+tee:	ld hl, TEE_KERNEL
 	ld (EXWRCH), hl
 
 	jp (iy)
@@ -344,7 +344,17 @@ W_UNTEE:
 
 	jp (iy)
 .word_end:
-	
+
+	;; ========================================================
+	;;
+	;; ========================================================
+W_TTY:
+	FORTH_WORD "TTY"
+	set 5,(IX + 0x3e)
+
+	jp tee
+.word_end:
+
 	;; ========================================================
 	;; Receive a block of memory via serial interface, using
 	;; XMODEM protocol
