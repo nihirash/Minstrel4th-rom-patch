@@ -62,6 +62,9 @@ LINK = #1D58			; Addr of name-length field of UFLOAT
 	org 0x014b		; KEYBOARD check
 	call get_key		; Splice in custom routine.
 	
+	org 0x0ba9	      ; Modified beep routine
+	jp beeper	      ;
+	
 ;;;;;;;;;;;;;;;;;;;;;;; Export binary file
 	savebin "patched.rom", 0, 16384
 

@@ -92,6 +92,21 @@ check_break:
         res 5,(ix+0x3e)         ; Reinstate usual keyboard routine
 
         ret                     ; Done
+
+	;; ============================================================
+	;; Modified beeper code, able to accommodate difference between
+	;; 3.25 MHz clock and 6.5 MHz clock
+	;; ============================================================
+beeper:
+	ld hl, 0x00fa
+	add hl, bc
+
+	bit 7, (IX+3E)		; Check clock speed
+	jp z, 0x0bae		; Done, if 3.25MHz
+beeper_65:
+	add hl,bc		; Double timer
+	jp 0x0bae		; Return to ROM routine
+	
 	
 	;; Resets UART buffers and set to 115,200 baud, 8N1,
 	;; with RTS high (deny to send)
