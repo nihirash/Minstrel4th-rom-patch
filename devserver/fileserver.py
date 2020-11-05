@@ -5,7 +5,8 @@ import os
 import datetime
 
 ############### CHANGE HERE TO YOUR UART DEV
-port = "/dev/tty.usbserial-0001" # For windows you may write just "COM3" or whatever.
+### port = "/dev/tty.usbserial-0001" # For windows you may write just "COM3" or whatever.
+port = "COM3" # For windows you may write just "COM3" or whatever.
 fspath = os.path.abspath("filesystem")
 tapin = 0
 tapout = 0

@@ -101,7 +101,7 @@ beeper:
 	ld hl, 0x00fa
 	add hl, bc
 
-	bit 7, (IX+3E)		; Check clock speed
+	bit 7, (IX + 0x3E)	; Check clock speed
 	jp z, 0x0bae		; Done, if 3.25MHz
 beeper_65:
 	add hl,bc		; Double timer
